@@ -1,0 +1,76 @@
+{
+  "title": "DB Fahrplan",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Deutsche Bahn Timetables",
+        "description": "Enter your own credentials from the DB API Marketplace. Subscribe to the Timetables API first.",
+        "data": {"client_id": "DB Client ID", "api_key": "DB API key"}
+      },
+      "reauth_confirm": {
+        "title": "Update DB API key",
+        "data": {"api_key": "New DB API key"}
+      },
+      "reconfigure": {
+        "title": "Change DB API credentials",
+        "data": {"client_id": "DB Client ID", "api_key": "DB API key"}
+      }
+    },
+    "error": {"invalid_auth": "The DB API rejected your credentials or subscription.", "cannot_connect": "Could not reach the DB Timetables API."},
+    "abort": {"already_configured": "This DB account is already configured.", "reconfigure_successful": "Credentials updated.", "reauth_successful": "Credentials updated."}
+  },
+  "options": {
+    "step": {
+      "init": {"menu_options": {"add_station": "Search and save station", "remove_station": "Remove saved station"}},
+      "add_station": {"title": "Find a station", "data": {"query": "Station name, EVA ID or DS100 code"}},
+      "select_station": {"title": "Save station", "data": {"station": "Station"}},
+      "remove_station": {"title": "Remove saved station", "data": {"station": "Station"}}
+    },
+    "error": {"invalid_auth": "DB API credentials rejected.", "cannot_connect": "DB API not reachable.", "no_stations": "No matching station found."},
+    "abort": {"no_saved_stations": "There are no saved stations."}
+  },
+  "config_subentries": {
+    "route": {
+      "entry_type": "Connection",
+      "initiate_flow": {"user": "Add connection", "reconfigure": "Edit connection"},
+      "step": {
+        "user": {
+          "title": "New direct connection",
+          "description": "Search both stations. On the next screen, choose the correct EVA IDs. Only trains stopping at the destination are included, without transfers.",
+          "data": {
+            "name": "Connection name (optional)",
+            "from_query": "Departure station (name or EVA ID)",
+            "to_query": "Destination station (name or EVA ID)",
+            "interval_minutes": "Refresh interval (minutes, 1–60)",
+            "lookahead_hours": "Lookahead (hours, 1–8)",
+            "include_cancelled": "Also show cancelled trains"
+          }
+        },
+        "reconfigure": {
+          "title": "Edit connection",
+          "data": {
+            "name": "Connection name (optional)",
+            "from_query": "Departure station (name or EVA ID)",
+            "to_query": "Destination station (name or EVA ID)",
+            "interval_minutes": "Refresh interval (minutes, 1–60)",
+            "lookahead_hours": "Lookahead (hours, 1–8)",
+            "include_cancelled": "Also show cancelled trains"
+          }
+        },
+        "choose_stations": {
+          "title": "Confirm station IDs",
+          "data": {"from_eva": "Departure station (EVA)", "to_eva": "Destination station (EVA)"}
+        }
+      },
+      "error": {"invalid_auth": "DB API credentials rejected.", "cannot_connect": "DB API not reachable.", "no_stations": "No station found. Try the exact DB station name or EVA ID.", "same_station": "Departure and destination must be different."},
+      "abort": {"reconfigure_successful": "Connection updated."}
+    }
+  },
+  "entity": {
+    "sensor": {
+      "departure": {"name": "Departure {number}"},
+      "departure_count": {"name": "Available departures"},
+      "last_update": {"name": "Last successful update"}
+    }
+  }
+}

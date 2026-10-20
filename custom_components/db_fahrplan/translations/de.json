@@ -1,0 +1,61 @@
+{
+  "title": "DB Fahrplan",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Deutsche Bahn Timetables verbinden",
+        "description": "Gib deine eigenen Zugangsdaten aus dem DB API Marketplace ein. Du musst zuvor die Timetables API abonnieren.",
+        "data": {"client_id": "DB Client ID", "api_key": "DB API Key"}
+      },
+      "reauth_confirm": {"title": "DB API Key aktualisieren", "data": {"api_key": "Neuer DB API Key"}},
+      "reconfigure": {"title": "DB API Zugangsdaten ändern", "data": {"client_id": "DB Client ID", "api_key": "DB API Key"}}
+    },
+    "error": {"invalid_auth": "Die DB API hat deine Zugangsdaten oder das Abonnement abgelehnt.", "cannot_connect": "Die DB Timetables API ist nicht erreichbar."},
+    "abort": {"already_configured": "Dieses DB Konto ist bereits eingerichtet.", "reconfigure_successful": "Zugangsdaten wurden aktualisiert.", "reauth_successful": "Zugangsdaten wurden aktualisiert."}
+  },
+  "options": {
+    "step": {
+      "init": {"menu_options": {"add_station": "Bahnhof suchen und speichern", "remove_station": "Gespeicherten Bahnhof entfernen"}},
+      "add_station": {"title": "Bahnhof suchen", "data": {"query": "Bahnhofsname, EVA ID oder DS100 Code"}},
+      "select_station": {"title": "Bahnhof speichern", "data": {"station": "Bahnhof"}},
+      "remove_station": {"title": "Gespeicherten Bahnhof entfernen", "data": {"station": "Bahnhof"}}
+    },
+    "error": {"invalid_auth": "DB API Zugangsdaten wurden abgelehnt.", "cannot_connect": "DB API nicht erreichbar.", "no_stations": "Kein passender Bahnhof gefunden."},
+    "abort": {"no_saved_stations": "Es sind keine Bahnhöfe gespeichert."}
+  },
+  "config_subentries": {
+    "route": {
+      "entry_type": "Verbindung",
+      "initiate_flow": {"user": "Verbindung hinzufügen", "reconfigure": "Verbindung bearbeiten"},
+      "step": {
+        "user": {
+          "title": "Neue Direktverbindung",
+          "description": "Suche nach den beiden Bahnhöfen und wähle im nächsten Schritt die richtige EVA ID aus. Es werden nur Fahrten berücksichtigt, die den Zielbahnhof ohne Umstieg erreichen.",
+          "data": {
+            "name": "Name der Verbindung (optional)", "from_query": "Startbahnhof (Name oder EVA ID)",
+            "to_query": "Zielbahnhof (Name oder EVA ID)", "interval_minutes": "Aktualisierungsintervall (Minuten, 1–60)",
+            "lookahead_hours": "Vorausschau (Stunden, 1–8)", "include_cancelled": "Ausgefallene Züge ebenfalls anzeigen"
+          }
+        },
+        "reconfigure": {
+          "title": "Verbindung bearbeiten",
+          "data": {
+            "name": "Name der Verbindung (optional)", "from_query": "Startbahnhof (Name oder EVA ID)",
+            "to_query": "Zielbahnhof (Name oder EVA ID)", "interval_minutes": "Aktualisierungsintervall (Minuten, 1–60)",
+            "lookahead_hours": "Vorausschau (Stunden, 1–8)", "include_cancelled": "Ausgefallene Züge ebenfalls anzeigen"
+          }
+        },
+        "choose_stations": {"title": "Bahnhofs IDs bestätigen", "data": {"from_eva": "Startbahnhof (EVA)", "to_eva": "Zielbahnhof (EVA)"}}
+      },
+      "error": {"invalid_auth": "DB API Zugangsdaten wurden abgelehnt.", "cannot_connect": "DB API nicht erreichbar.", "no_stations": "Kein Bahnhof gefunden. Versuche den vollständigen Namen oder die EVA ID.", "same_station": "Start und Ziel müssen unterschiedlich sein."},
+      "abort": {"reconfigure_successful": "Verbindung aktualisiert."}
+    }
+  },
+  "entity": {
+    "sensor": {
+      "departure": {"name": "Abfahrt {number}"},
+      "departure_count": {"name": "Verfügbare Abfahrten"},
+      "last_update": {"name": "Letzte erfolgreiche Aktualisierung"}
+    }
+  }
+}
