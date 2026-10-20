@@ -1,0 +1,45 @@
+name: Publish GitHub Release
+on:
+  push:
+    branches: [main]
+    paths:
+      - "custom_components/db_fahrplan/manifest.json"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+      - name: Validate integration
+        run: |
+          python -m compileall -q custom_components/db_fahrplan
+          python -m pytest -q
+      - name: Determine release tag
+        id: version
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          version = json.loads(Path('custom_components/db_fahrplan/manifest.json').read_text())['version']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'tag=v{version}\n')
+          PY
+      - name: Publish release if not already present
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            exit 0
+          fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "DB Fahrplan $TAG" --generate-notes

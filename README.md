@@ -2,7 +2,7 @@
 
 A community Home Assistant custom integration for the **official Deutsche Bahn Timetables API**. Configure your own DB API credentials once and add as many independent direct train connections as you like, each with the next **three departures**. Designed for HACS custom repositories and the native Home Assistant UI.
 
-> Development preview **v0.1.1**: unit tested without real DB credentials. A live DB account and Home Assistant installation have not been used for integration tests yet. Not an official Deutsche Bahn or Home Assistant product.
+> **v2.0.0**: saved-station dropdowns, multiple connection subentries and GitHub release-based versioning. Automated tests pass; authenticated live timetable results still require validation. Unofficial community integration.
 
 ## Features
 
@@ -25,11 +25,9 @@ A community Home Assistant custom integration for the **official Deutsche Bahn T
 
 The official endpoints used are `GET /station/{pattern}`, `GET /plan/{evaNo}/{date}/{hour}` and `GET /fchg/{evaNo}` under `https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1`.
 
-## Install (when you're ready)
+## Install and updates
 
-This repository **does not install or change anything** on your Home Assistant instance merely by being created on GitHub.
-
-When you explicitly decide to install it later:
+Updating the GitHub repository does not automatically install code on Home Assistant. Use HACS:
 
 1. In HACS add this GitHub URL as a **custom repository** of type **Integration**: `https://github.com/niki11euro/home-assistant-db-fahrplan-integration`.
 2. Download **DB Fahrplan**. Restart Home Assistant when prompted.
@@ -68,6 +66,13 @@ The **Timetables API is a station timetable, not a journey planner**. A connecti
 - Because the timetable timestamps do not contain an explicit UTC offset, they are interpreted in **Europe/Berlin**. The repeated hour on daylight-saving time transitions is intrinsically ambiguous.
 - If an express service has no intermediate stops in its `ppth/cpth` payload, that station cannot be reliably inferred as a stop. Cancelled services are hidden by default.
 
+## Versioning and icon behavior
+
+- HACS uses **GitHub Release** tags such as `v2.0.0` for version display. This repository publishes a release after its automated test suite passes when the manifest version changes on `main`.
+- Home Assistant 2026.3+ loads the bundled branding: `brand/icon.png` (256 x 256).
+- **HACS frontend limitation (2026.10):** The HACS update dialog can still display "icon not available" even though the bundled icon works in Home Assistant's integration view. Home Assistant Marketplace 2026.11 is expected to address this upstream behavior. Do not upgrade Home Assistant Core only to change the icon.
+- After installing a new version via HACS, restart Home Assistant to load the new Python code. Existing API credentials, station library and route subentries remain configured.
+
 ## Repository structure
 
 ```text
@@ -98,7 +103,7 @@ python -m pytest -q
 python -m compileall -q custom_components/db_fahrplan
 ```
 
-Validation and HACS checks run automatically via GitHub Actions. No real API tokens are needed for unit tests. Live end-to-end testing with actual HA and authenticated DB responses remains necessary before a stable release.
+Validation and HACS checks run automatically via GitHub Actions. No real API tokens are needed for unit tests. Live end-to-end testing against authenticated DB Timetables responses remains recommended.
 
 ## License & attribution
 

@@ -1,6 +1,8 @@
 """Validate distributable HACS repository metadata and language files."""
 
 import json
+import re
+import struct
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,11 +14,13 @@ def test_hacs_manifest_brand_files():
     hacs = json.loads((ROOT / "hacs.json").read_text())
     assert manifest["domain"] == "db_fahrplan"
     assert manifest["config_flow"] is True
+    assert re.fullmatch(r"\d+\.\d+\.\d+", manifest["version"])
     assert manifest["codeowners"]
     assert all(manifest[k] for k in ["version", "documentation", "issue_tracker", "name"])
     assert hacs["homeassistant"] == "2026.3.0"
     data = (base / "brand/icon.png").read_bytes()
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", data[16:24]) == (256, 256)
     assert len(list((ROOT / "custom_components").iterdir())) == 1
 
 
