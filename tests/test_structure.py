@@ -53,9 +53,14 @@ def test_button_platform_json_sensor_and_translations():
     assert '"json_route"' in sensor
     assert '"average_delay"' in sensor
     assert "DepartureFieldSensor" in sensor
+    assert "history_summary" in sensor
+    assert "DepartureDelayHistory" in (base / "coordinator.py").read_text()
+    assert "data[CONF_FROM_EVA]" in (base / "coordinator.py").read_text()
+    assert "data[CONF_TO_EVA]" in (base / "coordinator.py").read_text()
     for name in ("strings.json", "translations/de.json", "translations/en.json"):
         translated = json.loads((base / name).read_text())
         assert "refresh" in translated["entity"]["button"]
         for key in ("departure_time", "departure_date", "line", "terminal", "platform", "delay_minutes", "average_delay", "json_route"):
             assert key in translated["entity"]["sensor"]
         assert "set_display_name" in translated["options"]["step"]["init"]["menu_options"]
+        assert "history_days" in translated["config_subentries"]["route"]["step"]["user"]["data"]

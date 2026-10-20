@@ -20,6 +20,11 @@ CONF_TO_NAME = "to_name"
 CONF_INTERVAL = "interval_minutes"
 CONF_LOOKAHEAD = "lookahead_hours"
 CONF_INCLUDE_CANCELLED = "include_cancelled"
+CONF_HISTORY_DAYS = "history_days"
+
+DEFAULT_HISTORY_DAYS = 30
+MIN_HISTORY_DAYS = 1
+MAX_HISTORY_DAYS = 365
 
 DEFAULT_INTERVAL = 1
 MIN_INTERVAL = 1

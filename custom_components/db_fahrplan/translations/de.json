@@ -103,7 +103,8 @@
             "lookahead_hours": "Vorausschau (Stunden, 1–8)",
             "include_cancelled": "Ausgefallene Züge ebenfalls anzeigen",
             "from_eva": "Startbahnhof (gespeichert)",
-            "to_eva": "Zielbahnhof (gespeichert)"
+            "to_eva": "Zielbahnhof (gespeichert)",
+            "history_days": "Historischer Zeitraum (Tage, 1–365)"
           }
         },
         "reconfigure": {
@@ -114,7 +115,8 @@
             "lookahead_hours": "Vorausschau (Stunden, 1–8)",
             "include_cancelled": "Ausgefallene Züge ebenfalls anzeigen",
             "from_eva": "Startbahnhof (gespeichert)",
-            "to_eva": "Zielbahnhof (gespeichert)"
+            "to_eva": "Zielbahnhof (gespeichert)",
+            "history_days": "Historischer Zeitraum (Tage, 1–365)"
           },
           "description": "Wähle Start- und Zielbahnhof aus deiner gespeicherten Bahnhofsliste. Fehlt ein Bahnhof, speichere ihn zuerst über \"Konfigurieren\" beim DB API Konto. Es werden nur Direktverbindungen berücksichtigt."
         }
@@ -159,7 +161,7 @@
         "name": "Bahn {number} Verspätung"
       },
       "average_delay": {
-        "name": "Durchschnittliche Verspätung"
+        "name": "Historische Durchschnittsverspätung"
       },
       "json_route": {
         "name": "Fahrplan JSON"

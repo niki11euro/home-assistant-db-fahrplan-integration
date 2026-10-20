@@ -51,7 +51,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: DBConfigEntry) -> bool:
             # for train path matching.
             config[name_key] = saved.get("name") or config[name_key]
             config[display_key] = saved.get("display_name") or config[name_key]
-        routes[route.subentry_id] = RouteCoordinator(hass, client, config, route.title)
+        coordinator = RouteCoordinator(
+            hass, client, config, route.title,
+            entry_id=entry.entry_id, subentry_id=route.subentry_id,
+        )
+        await coordinator.async_load_history()
+        routes[route.subentry_id] = coordinator
     entry.runtime_data = RuntimeData(client=client, routes=routes)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

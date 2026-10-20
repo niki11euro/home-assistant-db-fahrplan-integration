@@ -32,7 +32,10 @@ def test_payload_contains_three_trains_every_required_field_and_eva_ids():
     encoded = json.dumps(result, ensure_ascii=False)
     assert json.loads(encoded) == result
     assert result["departure_count"] == 3
-    assert result["average_delay_minutes"] == 4
+    assert result["average_delay_minutes"] is None
+    assert result["current_three_average_delay_minutes"] == 4
+    assert result["schema_version"] == 2
+    assert result["history"]["sample_count"] == 0
     assert result["destination"]["eva"] == "370920"
     assert result["destination"]["station_name"] != result["destination"]["display_name"]
     assert result["departures"][0]["departure_date"] == "2026-10-20"
@@ -51,6 +54,23 @@ def test_delay_mean_excludes_cancelled_and_no_services_is_none():
     empty = build_route_payload([], {"origin":{"eva":"1"},"destination":{"eva":"2"},"refresh_interval_minutes":2}, None)
     assert empty["departure_count"] == 0
     assert empty["average_delay_minutes"] is None
+    assert empty["current_three_average_delay_minutes"] is None
     unavailable = build_route_payload([], {"origin":{"eva":"1"},"destination":{"eva":"2"},"refresh_interval_minutes":2}, None, available=False)
     assert unavailable["departure_count"] is None
     assert unavailable["available"] is False
+
+
+def test_history_in_json_is_distinct_from_three_upcoming_predictions():
+    route = {"origin": {"eva": "1"}, "destination": {"eva": "2"}, "refresh_interval_minutes": 1}
+    history = {"period_days": 30, "sample_count": 25, "average_delay_minutes": 4.4,
+               "first_departure": "2026-10-01T00:00:00+02:00",
+               "last_departure": "2026-10-20T00:00:00+02:00",
+               "observation_method": "last_forecast_near_departure"}
+    p = build_route_payload([train(1, 8), train(2, 0)], route, None, history_summary=history)
+    assert p["average_delay_minutes"] == 4.4
+    assert p["current_three_average_delay_minutes"] == 4.0
+    assert p["history"]["sample_count"] == 25
+    failed = build_route_payload([], route, None, available=False, history_summary=history)
+    assert failed["departure_count"] is None
+    assert failed["average_delay_minutes"] == 4.4
+    assert failed["current_three_average_delay_minutes"] is None

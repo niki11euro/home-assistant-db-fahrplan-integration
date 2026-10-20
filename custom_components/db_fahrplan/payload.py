@@ -27,6 +27,7 @@ def build_route_payload(
     available: bool = True,
     last_attempt: datetime | None = None,
     last_error: str | None = None,
+    history_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One predictable record for the three next departures per route."""
     trains: list[dict[str, Any]] = []
@@ -50,8 +51,14 @@ def build_route_payload(
             "stops": list(train.path),
         })
 
+    history = history_summary or {
+        "period_days": 30, "sample_count": 0,
+        "average_delay_minutes": None,
+        "first_departure": None, "last_departure": None,
+        "observation_method": "last_forecast_near_departure",
+    }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "available": available,
         "origin": dict(route_details["origin"]),
         "destination": dict(route_details["destination"]),
@@ -60,6 +67,8 @@ def build_route_payload(
         "last_attempt": last_attempt.isoformat() if last_attempt else None,
         "last_error": last_error,
         "departure_count": len(trains) if available else None,
-        "average_delay_minutes": average_delay_minutes(departures) if available else None,
+        "average_delay_minutes": history["average_delay_minutes"],
+        "current_three_average_delay_minutes": average_delay_minutes(departures) if available else None,
+        "history": history,
         "departures": trains,
     }

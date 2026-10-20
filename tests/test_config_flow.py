@@ -218,3 +218,30 @@ async def test_station_display_name_saved_separately_from_official_record(flows)
     assert saved["type"] == "create_entry"
     item = saved["data"]["saved_stations"]["370920"]
     assert item == {"name": "Trudering, München", "ds100": "PQTR", "display_name": "Mein Bahnhof"}
+
+
+@pytest.mark.asyncio
+async def test_history_window_default_and_editable_per_route(flows):
+    flow = route(flows, STATIONS)
+    form = await flow.async_step_user()
+    assert field(form, "history_days")[0].default == 30
+    result = await flow.async_step_user({
+        "name": "Test", "from_eva": "8007380", "to_eva": "8004168",
+        "interval_minutes": 1, "lookahead_hours": 3,
+        "include_cancelled": False, "history_days": 90,
+    })
+    assert result["data"]["history_days"] == 90
+    old_route = {
+        "name": "Old", "from_eva": "8007380", "from_name": "Zorneding",
+        "to_eva": "8004168", "to_name": "Trudering",
+        "interval_minutes": 1, "lookahead_hours": 3, "include_cancelled": False,
+    }
+    editing = route(flows, STATIONS, old_route)
+    form = await editing.async_step_reconfigure()
+    assert field(form, "history_days")[0].default == 30
+    result = await editing.async_step_reconfigure({
+        "name": "Old", "from_eva": "8007380", "to_eva": "8004168",
+        "interval_minutes": 1, "lookahead_hours": 3,
+        "include_cancelled": False, "history_days": 7,
+    })
+    assert result["data_updates"]["history_days"] == 7

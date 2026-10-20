@@ -24,8 +24,8 @@ from .const import (
     DOMAIN, NAME, CONF_CLIENT_ID, CONF_API_KEY, CONF_SAVED_STATIONS, CONF_DISPLAY_NAME,
     CONF_NAME, CONF_FROM_EVA,
     CONF_FROM_NAME, CONF_TO_EVA, CONF_TO_NAME, CONF_INTERVAL,
-    CONF_LOOKAHEAD, CONF_INCLUDE_CANCELLED, DEFAULT_INTERVAL,
-    DEFAULT_LOOKAHEAD, MIN_INTERVAL, MAX_INTERVAL, MIN_LOOKAHEAD,
+    CONF_LOOKAHEAD, CONF_INCLUDE_CANCELLED, CONF_HISTORY_DAYS, DEFAULT_INTERVAL,
+    DEFAULT_LOOKAHEAD, DEFAULT_HISTORY_DAYS, MIN_HISTORY_DAYS, MAX_HISTORY_DAYS, MIN_INTERVAL, MAX_INTERVAL, MIN_LOOKAHEAD,
     MAX_LOOKAHEAD, SUBENTRY_ROUTE,
 )
 from .model import Station
@@ -317,6 +317,8 @@ class DBRouteSubentryFlow(ConfigSubentryFlow):
                 vol.All(vol.Coerce(int), vol.Range(min=MIN_INTERVAL, max=MAX_INTERVAL)),
             vol.Required(CONF_LOOKAHEAD, default=old.get(CONF_LOOKAHEAD, DEFAULT_LOOKAHEAD)):
                 vol.All(vol.Coerce(int), vol.Range(min=MIN_LOOKAHEAD, max=MAX_LOOKAHEAD)),
+            vol.Required(CONF_HISTORY_DAYS, default=old.get(CONF_HISTORY_DAYS, DEFAULT_HISTORY_DAYS)):
+                vol.All(vol.Coerce(int), vol.Range(min=MIN_HISTORY_DAYS, max=MAX_HISTORY_DAYS)),
             vol.Required(CONF_INCLUDE_CANCELLED, default=old.get(CONF_INCLUDE_CANCELLED, False)): bool,
         })
         return vol.Schema(fields)
@@ -350,6 +352,11 @@ class DBRouteSubentryFlow(ConfigSubentryFlow):
                         CONF_INTERVAL: user_input[CONF_INTERVAL],
                         CONF_LOOKAHEAD: user_input[CONF_LOOKAHEAD],
                         CONF_INCLUDE_CANCELLED: user_input[CONF_INCLUDE_CANCELLED],
+                        CONF_HISTORY_DAYS: user_input.get(
+                            CONF_HISTORY_DAYS,
+                            self._get_reconfigure_subentry().data.get(CONF_HISTORY_DAYS, DEFAULT_HISTORY_DAYS)
+                            if self._editing else DEFAULT_HISTORY_DAYS,
+                        ),
                     }
                     if self._editing:
                         return self.async_update_reload_and_abort(

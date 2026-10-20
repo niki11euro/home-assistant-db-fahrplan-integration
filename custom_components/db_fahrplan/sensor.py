@@ -18,7 +18,7 @@ from . import DBConfigEntry
 from .const import DOMAIN, SUBENTRY_ROUTE
 from .coordinator import RouteCoordinator
 from .model import BERLIN, Departure
-from .payload import average_delay_minutes, build_route_payload
+from .payload import build_route_payload
 
 
 async def async_setup_entry(
@@ -198,7 +198,7 @@ class LastRefreshSensor(RouteEntity):
 
 
 class AverageDelaySensor(RouteEntity):
-    """Arithmetic mean over available, non-cancelled next three trains."""
+    """Historical rolling mean of uniquely observed departed trains."""
 
     _attr_translation_key = "average_delay"
     _attr_icon = "mdi:clock-alert-outline"
@@ -209,8 +209,17 @@ class AverageDelaySensor(RouteEntity):
         super().__init__(coordinator, entry_id, subentry_id, device, "average_delay")
 
     @property
+    def available(self) -> bool:
+        """Previously collected history remains readable during API outages."""
+        return True
+
+    @property
     def native_value(self) -> float | None:
-        return average_delay_minutes(self.coordinator.data)
+        return self.coordinator.history_summary["average_delay_minutes"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.coordinator.history_summary
 
 
 class RouteJSONSensor(RouteEntity):
@@ -240,6 +249,7 @@ class RouteJSONSensor(RouteEntity):
             available=self.coordinator.last_update_success,
             last_attempt=self.coordinator.last_attempt,
             last_error=self.coordinator.last_error,
+            history_summary=self.coordinator.history_summary,
         )
         # HA states are limited to 255 chars: the complete JSON therefore
         # lives in attributes, while the state is a small departure count.

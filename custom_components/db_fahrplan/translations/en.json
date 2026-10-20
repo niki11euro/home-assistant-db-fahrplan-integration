@@ -103,7 +103,8 @@
             "lookahead_hours": "Lookahead (hours, 1–8)",
             "include_cancelled": "Also show cancelled trains",
             "from_eva": "Departure station (saved)",
-            "to_eva": "Destination station (saved)"
+            "to_eva": "Destination station (saved)",
+            "history_days": "Historical averaging period (days, 1–365)"
           }
         },
         "reconfigure": {
@@ -114,7 +115,8 @@
             "lookahead_hours": "Lookahead (hours, 1–8)",
             "include_cancelled": "Also show cancelled trains",
             "from_eva": "Departure station (saved)",
-            "to_eva": "Destination station (saved)"
+            "to_eva": "Destination station (saved)",
+            "history_days": "Historical averaging period (days, 1–365)"
           },
           "description": "Select the departure and destination stations from your saved station library. If a station is missing, save it first using Configure on the DB API account. Only direct train connections are included."
         }
@@ -159,7 +161,7 @@
         "name": "Train {number} delay"
       },
       "average_delay": {
-        "name": "Average delay"
+        "name": "Historical average delay"
       },
       "json_route": {
         "name": "Timetable JSON"

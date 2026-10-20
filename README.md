@@ -2,7 +2,7 @@
 
 A community Home Assistant custom integration for the **official Deutsche Bahn Timetables API**. Configure your own DB API credentials once and add as many independent direct train connections as you like, each with the next **three departures**. Designed for HACS custom repositories and the native Home Assistant UI.
 
-> **v2.1.0**: improved direct-stop matching, manual refresh button, 18 detailed train sensors, average delay and JSON snapshot per route, and separate friendly station labels. Unit tested; live DB data depends on the API response. Unofficial community integration.
+> **v2.2.0**: improved direct-stop matching, manual refresh button, 18 detailed train sensors, average delay and JSON snapshot per route, and separate friendly station labels. Unit tested; live DB data depends on the API response. Unofficial community integration.
 
 ## Features
 
@@ -52,8 +52,9 @@ Create a connection with:
 | Refresh interval | `1` minute |
 | Lookahead | `4` hours |
 | Show cancelled | `No` |
+| Historical averaging window | `30` days |
 
-This will create a connection device with **Departure 1**, **Departure 2**, **Departure 3**, **Available departures**, **Last successful update**, **Average delay**, **Timetable JSON**, the 18 requested per-train detail sensors, and a **Refresh now** button. Each departure timestamp sensor has these attributes: `line`, `train`, `direction`, `platform`, `planned_platform`, `planned_departure`, `expected_departure`, `delay_minutes`, `minutes_until_departure`, `cancelled`, `stops`, and `stop_id`.
+This will create a connection device with **Departure 1**, **Departure 2**, **Departure 3**, **Available departures**, **Last successful update**, **Historical average delay**, **Timetable JSON**, the 18 requested per-train detail sensors, and a **Refresh now** button. Each departure timestamp sensor has these attributes: `line`, `train`, `direction`, `platform`, `planned_platform`, `planned_departure`, `expected_departure`, `delay_minutes`, `minutes_until_departure`, `cancelled`, `stops`, and `stop_id`.
 
 The destination must appear as a stop **after the origin** on the same train's route. Transfers are *not* planned. Routes that do not have a matching stop in the fetched horizon show fewer than three departures (or none).
 
@@ -65,7 +66,7 @@ Example (illustrative data, **not live times**):
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "available": true,
   "origin": {"eva": "8006671", "station_name": "Zorneding", "display_name": "Zorneding"},
   "destination": {"eva": "370920", "station_name": "Trudering, München", "display_name": "Trudering"},
@@ -74,7 +75,11 @@ Example (illustrative data, **not live times**):
   "last_attempt": "2026-10-20T12:00:00+02:00",
   "last_error": null,
   "departure_count": 1,
-  "average_delay_minutes": 3.0,
+  "average_delay_minutes": null,
+  "current_three_average_delay_minutes": 3.0,
+  "history": {"period_days": 30, "sample_count": 0, "average_delay_minutes": null,
+              "first_departure": null, "last_departure": null,
+              "observation_method": "last_forecast_near_departure"},
   "departures": [
     {"number": 1, "line": "S6", "train": "S 6", "terminal": "Tutzing",
      "departure_date": "2026-10-20", "departure_time": "12:15",
@@ -88,7 +93,16 @@ Example (illustrative data, **not live times**):
 
 For Home Assistant templates, use `state_attr('sensor.<route>_fahrplan_json', 'data')` and access the `departures` list. In a dashboard, show the dedicated sensors directly. The `Refresh now` button can be pressed manually or through the normal `button.press` action. When the DB API is unreachable, the snapshot reports `available: false` and a non-sensitive `last_error`; the other sensors become unavailable instead of misleadingly reporting 0 trains.
 
-The **average delay** is calculated from the delay minutes of up to three upcoming, non-cancelled trains. Missing schedules and cancelled trains are excluded. `0` means no delay is reported, while unknown means no usable departures were available.
+### Historical average delay (v2.2.0+)
+
+The **existing average-delay sensor** now reports a **rolling historical mean** (30 days by default, configurable from 1 to 365 days independently per connection). It is no longer the mean of the next three trains. Every unique DB departure (`stop_id`) can contribute **at most one** sample. The integration retains the last valid API-predicted delay observed shortly before that train's estimated departure and commits it to the history once the estimated departure has passed. The observation must have been made within 2–10 minutes before the train's expected departure (depending on refresh interval) to avoid using very old predictions. Cancelled or unknown-delay entries are not recorded as observations.
+
+History is stored persistently for up to 365 days per connection using Home Assistant's supported `Store` API, including across Home Assistant restarts; it does not contain credentials. The selected averaging window filters these samples. Changing the window does not reset collected history. The `sample_count`, `period_days`, `first_departure`, `last_departure` and `observation_method` attributes expose coverage and the method. **Until at least one qualifying departure has been observed, the historical sensor is `unknown`, not `0`.** The integration cannot reliably recover earlier historical trips from the DB Timetables API; accumulation starts when this update is installed.
+
+The DB API provides forecast and timetable changes, **not an independently verified actual departure time**. This historical average is therefore based on near-departure *predictions*, not certified measured actual delays. Occasional cancellations or changes reported after the last observation may be missed. Use a 1-minute refresh interval for the best coverage.
+
+In the JSON sensor, `average_delay_minutes` is the **historical** value from this release onward (`schema_version: 2`); `current_three_average_delay_minutes` preserves the old instantaneous mean for dashboard comparisons. The nested `history` object supplies historical sample count and time window. A DB outage does not invalidate already collected historical samples.
+
 
 ## Data model and limitations
 
@@ -103,7 +117,7 @@ The **Timetables API is a station timetable, not a journey planner**. A connecti
 
 ## Versioning and icon behavior
 
-- HACS uses **GitHub Release** tags such as `v2.1.0` for version display. This repository publishes a release after its automated test suite passes when the manifest version changes on `main`.
+- HACS uses **GitHub Release** tags such as `v2.2.0` for version display. This repository publishes a release after its automated test suite passes when the manifest version changes on `main`.
 - Home Assistant 2026.3+ loads the bundled branding: `brand/icon.png` (256 x 256).
 - **HACS frontend limitation (2026.10):** The HACS update dialog can still display "icon not available" even though the bundled icon works in Home Assistant's integration view. Home Assistant Marketplace 2026.11 is expected to address this upstream behavior. Do not upgrade Home Assistant Core only to change the icon.
 - After installing a new version via HACS, restart Home Assistant to load the new Python code. Existing API credentials, station library and route subentries remain configured.
@@ -120,6 +134,7 @@ custom_components/db_fahrplan/
   sensor.py          # 25 sensors per route including JSON and averages
   button.py          # one manual refresh button per route
   payload.py         # JSON serialization and delay calculation
+  history.py         # deduplicated historical sample collection and rolling mean
   const.py
   manifest.json
   strings.json
