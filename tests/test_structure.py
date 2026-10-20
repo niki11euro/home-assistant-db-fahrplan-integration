@@ -25,7 +25,15 @@ def test_translation_files_have_equivalent_steps():
     en = json.loads((base / "strings.json").read_text())
     de = json.loads((base / "translations/de.json").read_text())
     assert en.keys() == de.keys()
-    for key in ["user", "reconfigure", "choose_stations"]:
+    for key in ["user", "reconfigure"]:
         assert key in en["config_subentries"]["route"]["step"]
         assert key in de["config_subentries"]["route"]["step"]
+    for locale in (en, de):
+        route = locale["config_subentries"]["route"]
+        assert "choose_stations" not in route["step"]
+        assert "not_enough_saved_stations" in route["abort"]
+        for step in ("user", "reconfigure"):
+            fields = route["step"][step]["data"]
+            assert {"from_eva", "to_eva"} <= fields.keys()
+            assert "from_query" not in fields and "to_query" not in fields
     assert en["entity"]["sensor"].keys() == de["entity"]["sensor"].keys()

@@ -1,7 +1,7 @@
 {
   "domain": "db_fahrplan",
   "name": "DB Fahrplan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/niki11euro/home-assistant-db-fahrplan-integration",
   "issue_tracker": "https://github.com/niki11euro/home-assistant-db-fahrplan-integration/issues",
   "codeowners": ["@niki11euro"],

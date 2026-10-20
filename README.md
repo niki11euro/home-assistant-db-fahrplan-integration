@@ -2,12 +2,12 @@
 
 A community Home Assistant custom integration for the **official Deutsche Bahn Timetables API**. Configure your own DB API credentials once and add as many independent direct train connections as you like, each with the next **three departures**. Designed for HACS custom repositories and the native Home Assistant UI.
 
-> Development preview **v0.1.0**: unit tested without real DB credentials. A live DB account and Home Assistant installation have not been used for integration tests yet. Not an official Deutsche Bahn or Home Assistant product.
+> Development preview **v0.1.1**: unit tested without real DB credentials. A live DB account and Home Assistant installation have not been used for integration tests yet. Not an official Deutsche Bahn or Home Assistant product.
 
 ## Features
 
 - **One API account, many connections**: Uses native Home Assistant *config subentries*. Each connection gets its own device and polling interval.
-- **Station search and library**: Search the official DB endpoint by name, EVA number or DS100 code, select the correct EVA ID, then save it for reuse. Stations from newly created connections are remembered automatically.
+- **Station search and library**: Search the official DB endpoint by name, EVA number or DS100 code, select the correct EVA ID, then save it in the account-wide library. New connections select both endpoints from searchable dropdowns of saved stations, without repeating an API search.
 - **Exactly three departure sensors per connection**: Timestamp state (estimated or planned) plus line, platform, scheduled departure, delay, destination, cancellation status, route and minutes until departure as attributes.
 - **Two additional sensors**: Number of available departures and last successful refresh for each connection.
 - **Options per connection**: Name, departure station, destination, refresh interval **1–60 minutes** (default **1 minute**), time horizon **1–8 hours** (default **4 hours**), and whether cancelled trains are shown.
@@ -34,8 +34,9 @@ When you explicitly decide to install it later:
 1. In HACS add this GitHub URL as a **custom repository** of type **Integration**: `https://github.com/niki11euro/home-assistant-db-fahrplan-integration`.
 2. Download **DB Fahrplan**. Restart Home Assistant when prompted.
 3. Go to **Settings → Devices & services → Add integration → DB Fahrplan** and enter your API credentials.
-4. Open the configured API account. Add a new **Connection** subentry, search for your stations and confirm their displayed EVA IDs.
-5. Repeat step 4 to add further routes. Each route can be edited and removed individually. Use **Configure** on the main account to manage the saved-station library.
+4. Open **Configure** on the DB Fahrplan API account and save at least two stations using **Search and save station**.
+5. Add a new **Connection** subentry. Choose the start and destination from the two saved-station dropdowns; the EVA IDs are used automatically.
+6. Repeat step 5 to add further routes. Each route can be edited and removed individually. Use **Configure** on the main account to manage the saved-station library.
 
 Required: **Home Assistant 2026.3.0+** (native subentries and local integration brand assets). HACS is optional for a manual installation, but recommended for future update notifications.
 
@@ -46,8 +47,8 @@ Create a connection with:
 | Setting | Example |
 | --- | --- |
 | Name | Zorneding → Trudering |
-| Start | `Zorneding` (select official EVA match) |
-| Destination | `München-Trudering` (select exact API station match) |
+| Start | `Zorneding` (select from saved stations) |
+| Destination | `München-Trudering` (select from saved stations) |
 | Refresh interval | `1` minute |
 | Lookahead | `4` hours |
 | Show cancelled | `No` |

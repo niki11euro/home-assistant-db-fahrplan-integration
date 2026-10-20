@@ -22,7 +22,7 @@ import voluptuous as vol
 from .api import DBAPIError, DBAuthError, DBClient
 from .const import (
     DOMAIN, NAME, CONF_CLIENT_ID, CONF_API_KEY, CONF_SAVED_STATIONS,
-    CONF_NAME, CONF_FROM_QUERY, CONF_TO_QUERY, CONF_FROM_EVA,
+    CONF_NAME, CONF_FROM_EVA,
     CONF_FROM_NAME, CONF_TO_EVA, CONF_TO_NAME, CONF_INTERVAL,
     CONF_LOOKAHEAD, CONF_INCLUDE_CANCELLED, DEFAULT_INTERVAL,
     DEFAULT_LOOKAHEAD, MIN_INTERVAL, MAX_INTERVAL, MIN_LOOKAHEAD,
@@ -55,16 +55,6 @@ def _saved_stations(entry: ConfigEntry) -> dict[str, dict[str, str]]:
     """Read the user-maintained station library."""
     return dict(entry.options.get(CONF_SAVED_STATIONS, {}))
 
-
-def _remember_stations(hass, entry: ConfigEntry, stations: list[Station]) -> None:
-    """Keep every used origin/destination in the reusable station library."""
-    saved = _saved_stations(entry)
-    for station in stations:
-        saved[station.eva] = {"name": station.name, "ds100": station.ds100}
-    if saved != _saved_stations(entry):
-        hass.config_entries.async_update_entry(
-            entry, options={**entry.options, CONF_SAVED_STATIONS: saved}
-        )
 
 
 class DBFahrplanConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -231,103 +221,107 @@ class DBOptionsFlow(OptionsFlowWithReload):
         )
 
 
+
 class DBRouteSubentryFlow(ConfigSubentryFlow):
-    """Wizard to add or reconfigure independently polling direct connections."""
+    """Create and edit direct connections using the saved station library."""
 
     def __init__(self) -> None:
         self._editing = False
-        self._draft: dict[str, Any] = {}
-        self._from: dict[str, Station] = {}
-        self._to: dict[str, Station] = {}
 
-    def _schema(self) -> vol.Schema:
+    def _available_stations(self) -> dict[str, Station]:
+        """Offer saved stations, plus legacy route endpoints during editing.
+
+        A station may have been removed from the shared library after a route
+        was created. Keep those endpoints selectable during reconfiguration
+        so the existing route is not silently changed or made uneditable.
+        """
+        stations = {
+            eva: Station(eva, data["name"], data.get("ds100", ""))
+            for eva, data in _saved_stations(self._get_entry()).items()
+        }
+        if self._editing:
+            old = self._get_reconfigure_subentry().data
+            for eva_key, name_key in (
+                (CONF_FROM_EVA, CONF_FROM_NAME),
+                (CONF_TO_EVA, CONF_TO_NAME),
+            ):
+                eva = old.get(eva_key)
+                if eva and eva not in stations:
+                    stations[eva] = Station(eva, old.get(name_key) or eva, "")
+        return dict(sorted(stations.items(), key=lambda item: (item[1].name.casefold(), item[0])))
+
+    def _schema(self, stations: dict[str, Station]) -> vol.Schema:
+        """Present two dropdowns keyed by EVA ID, not free-form text fields."""
         old = self._get_reconfigure_subentry().data if self._editing else {}
-        return vol.Schema({
-            vol.Optional(CONF_NAME, default=old.get(CONF_NAME, "")): str,
-            vol.Required(CONF_FROM_QUERY, default=old.get(CONF_FROM_NAME, "")): str,
-            vol.Required(CONF_TO_QUERY, default=old.get(CONF_TO_NAME, "")): str,
+        choices = _station_choices(list(stations.values()))
+        fields: dict = {vol.Optional(CONF_NAME, default=old.get(CONF_NAME, "")): str}
+        for key in (CONF_FROM_EVA, CONF_TO_EVA):
+            previous = old.get(key)
+            marker = (
+                vol.Required(key, default=previous)
+                if previous in stations else vol.Required(key)
+            )
+            fields[marker] = choices
+        fields.update({
             vol.Required(CONF_INTERVAL, default=old.get(CONF_INTERVAL, DEFAULT_INTERVAL)):
                 vol.All(vol.Coerce(int), vol.Range(min=MIN_INTERVAL, max=MAX_INTERVAL)),
             vol.Required(CONF_LOOKAHEAD, default=old.get(CONF_LOOKAHEAD, DEFAULT_LOOKAHEAD)):
                 vol.All(vol.Coerce(int), vol.Range(min=MIN_LOOKAHEAD, max=MAX_LOOKAHEAD)),
             vol.Required(CONF_INCLUDE_CANCELLED, default=old.get(CONF_INCLUDE_CANCELLED, False)): bool,
         })
+        return vol.Schema(fields)
 
-    async def _search(self, query: str) -> list[Station]:
-        """Combine saved station IDs with official DB station lookup."""
-        entry = self._get_entry()
-        client = entry.runtime_data.client if entry.runtime_data else DBClient(
-            async_get_clientsession(self.hass),
-            entry.data[CONF_CLIENT_ID],
-            entry.data[CONF_API_KEY],
-        )
-        found = await client.find_stations(query)
-        stations = {station.eva: station for station in found}
-        for eva, data in _saved_stations(entry).items():
-            if query.casefold() in data["name"].casefold() or query == eva:
-                stations.setdefault(eva, Station(eva, data["name"], data.get("ds100", "")))
-        return list(stations.values())
+    async def _route_form(
+        self, user_input: dict[str, Any] | None, step: str
+    ) -> SubentryFlowResult:
+        stations = self._available_stations()
+        if len(stations) < 2:
+            return self.async_abort(reason="not_enough_saved_stations")
 
-    async def _route_form(self, user_input: dict[str, Any] | None, step: str) -> SubentryFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            self._draft = dict(user_input)
-            try:
-                from_stations, to_stations = await self._search(user_input[CONF_FROM_QUERY]), await self._search(user_input[CONF_TO_QUERY])
-            except DBAuthError:
-                errors["base"] = "invalid_auth"
-            except DBAPIError:
-                errors["base"] = "cannot_connect"
-            else:
-                if not from_stations:
-                    errors[CONF_FROM_QUERY] = "no_stations"
-                if not to_stations:
-                    errors[CONF_TO_QUERY] = "no_stations"
-                if not errors:
-                    self._from = {s.eva: s for s in from_stations}
-                    self._to = {s.eva: s for s in to_stations}
-                    return await self.async_step_choose_stations()
-        return self.async_show_form(step_id=step, data_schema=self._schema(), errors=errors)
+            origin = stations.get(user_input.get(CONF_FROM_EVA, ""))
+            destination = stations.get(user_input.get(CONF_TO_EVA, ""))
+            if origin is None:
+                errors[CONF_FROM_EVA] = "invalid_station"
+            if destination is None:
+                errors[CONF_TO_EVA] = "invalid_station"
+            if origin is not None and destination is not None:
+                if origin.eva == destination.eva:
+                    errors["base"] = "same_station"
+                else:
+                    name = (user_input.get(CONF_NAME) or "").strip()
+                    data = {
+                        CONF_NAME: name or f"{origin.name} \u2192 {destination.name}",
+                        CONF_FROM_EVA: origin.eva,
+                        CONF_FROM_NAME: origin.name,
+                        CONF_TO_EVA: destination.eva,
+                        CONF_TO_NAME: destination.name,
+                        CONF_INTERVAL: user_input[CONF_INTERVAL],
+                        CONF_LOOKAHEAD: user_input[CONF_LOOKAHEAD],
+                        CONF_INCLUDE_CANCELLED: user_input[CONF_INCLUDE_CANCELLED],
+                    }
+                    if self._editing:
+                        return self.async_update_reload_and_abort(
+                            self._get_entry(), self._get_reconfigure_subentry(),
+                            data_updates=data,
+                        )
+                    return self.async_create_entry(
+                        title=data[CONF_NAME], data=data, unique_id=str(uuid4())
+                    )
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        return self.async_show_form(
+            step_id=step, data_schema=self._schema(stations), errors=errors
+        )
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
         self._editing = False
         return await self._route_form(user_input, "user")
 
-    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        self._editing = True
-        return await self._route_form(user_input, "reconfigure")
-
-    async def async_step_choose_stations(
+    async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            origin, destination = self._from[user_input[CONF_FROM_EVA]], self._to[user_input[CONF_TO_EVA]]
-            if origin.eva == destination.eva:
-                errors["base"] = "same_station"
-            else:
-                data = {
-                    CONF_NAME: self._draft.get(CONF_NAME) or f"{origin.name} → {destination.name}",
-                    CONF_FROM_EVA: origin.eva,
-                    CONF_FROM_NAME: origin.name,
-                    CONF_TO_EVA: destination.eva,
-                    CONF_TO_NAME: destination.name,
-                    CONF_INTERVAL: self._draft[CONF_INTERVAL],
-                    CONF_LOOKAHEAD: self._draft[CONF_LOOKAHEAD],
-                    CONF_INCLUDE_CANCELLED: self._draft[CONF_INCLUDE_CANCELLED],
-                }
-                entry = self._get_entry()
-                _remember_stations(self.hass, entry, [origin, destination])
-                if self._editing:
-                    subentry = self._get_reconfigure_subentry()
-                    return self.async_update_reload_and_abort(entry, subentry, data_updates=data)
-                return self.async_create_entry(
-                    title=data[CONF_NAME], data=data, unique_id=str(uuid4())
-                )
-        return self.async_show_form(
-            step_id="choose_stations", errors=errors,
-            data_schema=vol.Schema({
-                vol.Required(CONF_FROM_EVA): _station_choices(list(self._from.values())),
-                vol.Required(CONF_TO_EVA): _station_choices(list(self._to.values())),
-            }),
-        )
+        self._editing = True
+        return await self._route_form(user_input, "reconfigure")
