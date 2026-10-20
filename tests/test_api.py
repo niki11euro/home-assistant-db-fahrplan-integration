@@ -7,14 +7,15 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.db_fahrplan.api import (
-    DBAuthError, DBClient, DBAPIError, DBRateLimitError,
+    DBAuthError, DBAccessDeniedError, DBCooldownError, DBClient, DBAPIError, DBRateLimitError,
 )
 
 
 class FakeResponse:
-    def __init__(self, status, body):
+    def __init__(self, status, body, headers=None):
         self.status = status
         self.body = body.encode("utf-8")
+        self.headers = headers or {}
 
     async def __aenter__(self):
         return self
@@ -67,9 +68,9 @@ async def test_account_shared_station_cache_and_three_departures():
 @pytest.mark.asyncio
 async def test_authentication_error_no_secret_in_error():
     session = FakeSession()
-    session.fail_status = 403
+    session.fail_status = 401
     client = DBClient(session,"private-id", "private-secret")
-    with pytest.raises(DBAuthError) as exc:
+    with pytest.raises(DBAuthError, match="HTTP 401") as exc:
         await client.find_stations("Berlin")
     assert "private-secret" not in str(exc.value)
     assert "private-id" not in str(exc.value)
@@ -94,18 +95,24 @@ async def test_malformed_xml_is_reported_safely():
 
 
 @pytest.mark.asyncio
-async def test_rate_safeguard_prevents_more_than_55_calls_in_a_minute():
+async def test_rate_safeguard_prevents_more_than_45_calls_in_a_minute():
     session = FakeSession()
     client = DBClient(session, "id", "key")
-    for _ in range(55):
+    client._spacing = 0  # Avoid waiting for real-world pacing in tests.
+    for _ in range(45):
         await client._request("station/Trudering")
-    with pytest.raises(DBRateLimitError):
+    with pytest.raises(DBRateLimitError, match="local request limit"):
         await client._request("station/Trudering")
-    assert len(session.calls) == 55
+    assert len(session.calls) == 45
+    usage = client.request_statistics
+    assert usage["requests_last_minute"] == 45
+    assert usage["request_limit_per_minute"] == 45
+    assert usage["requests_since_start"] == 45
+    assert usage["cooldown_seconds_remaining"] > 0
 
 
 @pytest.mark.asyncio
-async def test_manual_refresh_bypasses_fchg_and_plan_cache():
+async def test_manual_refresh_forces_changes_but_keeps_plan_cache():
     session = FakeSession()
     client = DBClient(session, "id", "key")
     now = datetime(2026, 10, 20, 11, 0, tzinfo=ZoneInfo("Europe/Berlin"))
@@ -114,7 +121,9 @@ async def test_manual_refresh_bypasses_fchg_and_plan_cache():
     await client.departures("8006671", "Trudering, München", hours=1, now=now)
     assert len(session.calls) == count
     await client.departures("8006671", "Trudering, München", hours=1, now=now, force=True)
-    assert len(session.calls) == 2 * count
+    assert len(session.calls) == count + 1
+    assert len([url for url in session.calls if "/plan/" in url]) == 2
+    assert len([url for url in session.calls if "/fchg/" in url]) == 2
 
 @pytest.mark.asyncio
 async def test_origin_to_destination_arrival_board_realtime_and_lost_destination():
@@ -153,3 +162,107 @@ async def test_origin_to_destination_arrival_board_realtime_and_lost_destination
     assert len(fallback) == 1
     assert fallback[0].arrival_expected is None
 
+
+
+@pytest.mark.asyncio
+async def test_http_403_is_not_treated_as_bad_api_key_and_enters_shared_backoff():
+    session = FakeSession()
+    session.fail_status = 403
+    client = DBClient(session, "private-id", "private-key")
+    with pytest.raises(DBAccessDeniedError, match="HTTP 403") as exc:
+        await client.find_stations("Trudering")
+    assert "private-key" not in str(exc.value)
+    assert "private-id" not in str(exc.value)
+    before = len(session.calls)
+    with pytest.raises(DBCooldownError, match="HTTP 403"):
+        await client._request("fchg/8006671")
+    assert len(session.calls) == before  # No additional HTTP request.
+    usage = client.request_statistics
+    assert usage["last_http_status"] == 403
+    assert usage["http_403_count"] == 1
+    assert usage["http_401_count"] == 0
+    assert usage["cooldown_seconds_remaining"] >= 119
+    assert "HTTP 403" in usage["cooldown_reason"]
+    assert not any("private" in str(value) for value in usage.values())
+
+
+@pytest.mark.asyncio
+async def test_429_honors_retry_after_and_tracks_usage():
+    class RetrySession(FakeSession):
+        def get(self, url, *, headers, timeout):
+            self.calls.append(url)
+            return FakeResponse(429, "no quota", headers={"Retry-After": "180"})
+
+    session = RetrySession()
+    client = DBClient(session, "id", "key")
+    with pytest.raises(DBRateLimitError, match="HTTP 429"):
+        await client._request("fchg/8006671")
+    usage = client.request_statistics
+    assert usage["requests_last_minute"] == 1
+    assert usage["requests_since_start"] == 1
+    assert usage["http_429_count"] == 1
+    assert usage["last_http_status"] == 429
+    assert usage["cooldown_seconds_remaining"] >= 179
+    with pytest.raises(DBCooldownError):
+        await client._request("fchg/8000261")
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_503_server_error_is_temporary_and_backed_off():
+    session = FakeSession()
+    session.fail_status = 503
+    client = DBClient(session, "id", "key")
+    with pytest.raises(DBAPIError, match="HTTP 503"):
+        await client._request("plan/8006671/261020/11")
+    usage = client.request_statistics
+    assert usage["http_5xx_count"] == 1
+    assert usage["http_401_count"] == 0
+    assert usage["cooldown_seconds_remaining"] >= 29
+    with pytest.raises(DBCooldownError):
+        await client._request("plan/8006671/261020/12")
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_usage_is_account_wide_and_no_secret_is_exposed():
+    client = DBClient(FakeSession(), "super-secret-client", "super-secret-key")
+    await client._request("station/Zorneding")
+    await client._request("station/Trudering")
+    stats = client.request_statistics
+    assert stats["requests_last_minute"] == 2
+    assert stats["requests_last_hour"] == 2
+    assert stats["requests_since_start"] == 2
+    assert stats["last_http_status"] == 200
+    assert stats["cooldown_seconds_remaining"] == 0
+    assert "super-secret" not in repr(stats)
+
+
+@pytest.mark.asyncio
+async def test_no_more_than_two_network_requests_in_flight():
+    class SlowSession(FakeSession):
+        active = 0
+        maximum = 0
+
+        def get(self, url, *, headers, timeout):
+            self.calls.append(url)
+            outer = self
+
+            class SlowResponse(FakeResponse):
+                async def __aenter__(self):
+                    outer.active += 1
+                    outer.maximum = max(outer.maximum, outer.active)
+                    await asyncio.sleep(0.015)
+                    return self
+
+                async def __aexit__(self, *_):
+                    outer.active -= 1
+
+            return SlowResponse(200, "<timetable/>")
+
+    session = SlowSession()
+    client = DBClient(session, "id", "key")
+    client._spacing = 0
+    await asyncio.gather(*(client._request(f"plan/8006671/261020/{x:02d}") for x in range(8)))
+    assert len(session.calls) == 8
+    assert session.maximum == 2

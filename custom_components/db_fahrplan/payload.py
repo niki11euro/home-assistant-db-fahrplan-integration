@@ -75,6 +75,7 @@ def build_route_payload(
         "origin": dict(route_details["origin"]),
         "destination": dict(route_details["destination"]),
         "refresh_interval_minutes": route_details["refresh_interval_minutes"],
+        "api_usage": dict(route_details.get("api_usage", {})),
         "last_success": last_success.isoformat() if last_success else None,
         "last_attempt": last_attempt.isoformat() if last_attempt else None,
         "last_error": last_error,

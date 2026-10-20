@@ -2,6 +2,8 @@
 
 A community Home Assistant custom integration for the **official Deutsche Bahn Timetables API**. Configure your own DB API credentials once and add as many independent direct train connections as you like, each with the next **three departures**. Designed for HACS custom repositories and the native Home Assistant UI.
 
+> **v2.4.0**: Account-wide DB API request pacing (0.3s between requests, at most 2 in flight), conservative rolling quota guard (45 requests/minute), temporary shared cooldown with exponential backoff on HTTP 403/429/5xx/network errors (respects Retry-After), and safe diagnostic sensor + JSON stats. Only HTTP 401 prompts reauthentication. Manual Refresh now bypasses realtime changes caching but keeps the 30-minute scheduled-timetable cache, greatly reducing unnecessary requests. Existing station IDs, routes, dashboards, train sensors and historical delay data are retained.
+
 > **v2.3.0**: Real-time arrival predictions for each route using the matching destination station board. When no reliable matching stop exists, the arrival remains unknown. (Previous v2.2.0 features retained.)
 
 > **v2.2.0**: improved direct-stop matching, manual refresh button, 18 detailed train sensors, average delay and JSON snapshot per route, and separate friendly station labels. Unit tested; live DB data depends on the API response. Unofficial community integration.
@@ -17,7 +19,9 @@ A community Home Assistant custom integration for the **official Deutsche Bahn T
 - **JSON for automation**: The sensor state is a small departure count; `data` is the complete JSON-compatible dictionary, and `json` is the serialized JSON string (sensor states cannot safely hold large JSON documents). The snapshot includes official station names, EVA IDs, friendly display names, API status, timestamps, train details, delay mean and paths.
 - **Options per connection**: Name, departure station, destination, refresh interval **1–60 minutes** (default **1 minute**), time horizon **1–8 hours** (default **4 hours**), and whether cancelled trains are shown.
 - **Live changes**: Merges `/plan/...` with `/fchg/...` for delays, cancellations, changed platforms and route changes. Identical origin-station requests are shared across connections.
-- **Efficient and considerate**: 30-minute plan cache, 45-second change cache and account-wide request safeguard at 55 calls/minute (DB free tier: 60 calls/minute).
+- **Efficient and considerate**: 30-minute plan cache, 45-second change cache, account-wide request spacing and concurrency cap, and conservative 45-calls/minute safeguard (DB's published free limit is 60 calls/minute). A manual refresh bypasses only the live-change cache, not the full timetable plan cache.
+- **Graceful HTTP errors**: 401 means invalid credentials and offers reauthentication; 403 is displayed as forbidden (can mean access rights, subscription or quota) and uses automatic retries after a shared cooldown, not a misleading invalid-key prompt. 429 honors Retry-After; temporary 5xx/network errors back off as well. Cooldowns apply across all configured routes for this account, preventing rapid repeated requests.
+- **Request diagnostics**: Each connection has an account-wide API requests/minute diagnostic sensor, with rolling 60-second and 60-minute counts, total since integration startup, latest HTTP status, 401/403/429/5xx counters, and shared cooldown remaining. The same data is available as `api_usage` in each JSON sensor. No credential, request URL or response body is logged. Counters reset on integration reload.
 - **No secrets in GitHub**: You enter your own Client ID and API key privately in the Home Assistant configuration wizard.
 - German and English UI strings. Unavailable API data marks sensors unavailable; no invented departures.
 

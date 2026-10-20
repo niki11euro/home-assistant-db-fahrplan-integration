@@ -78,3 +78,21 @@ def test_arrival_matching_is_based_on_target_eva_and_timetable_arrivals():
     assert "arrival_datetime" in payload
     assert "arrival_time" in sensor
 
+
+def test_http_403_backoff_and_api_usage_diagnostics_present():
+    base = ROOT / "custom_components" / "db_fahrplan"
+    api = (base / "api.py").read_text()
+    coordinator = (base / "coordinator.py").read_text()
+    payload = (base / "payload.py").read_text()
+    sensors = (base / "sensor.py").read_text()
+    assert "DBAccessDeniedError" in api
+    assert "DBCooldownError" in api
+    assert "MIN_REQUEST_SPACING_SECONDS" in api
+    assert "MAX_CONCURRENT_REQUESTS" in api
+    assert "MAX_REQUESTS_PER_MINUTE = 45" in api
+    assert "self._planned(origin_eva, hour) for hour in hours_to_fetch" in api
+    assert "api_usage" in coordinator and "api_usage" in payload
+    assert "class APIUsageSensor" in sensors
+    for locale in ("strings.json", "translations/de.json", "translations/en.json"):
+        doc = json.loads((base / locale).read_text())
+        assert "api_request_usage" in doc["entity"]["sensor"]

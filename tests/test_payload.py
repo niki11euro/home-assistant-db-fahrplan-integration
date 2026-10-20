@@ -97,3 +97,24 @@ def test_destination_arrival_serialized_when_available():
     assert payload[1]["arrival_time"] is None
     assert payload[1]["arrival_source"] is None
 
+
+def test_api_account_usage_is_in_json_snapshot_without_secrets():
+    stations = {
+        "origin": {"eva": "8006671"},
+        "destination": {"eva": "370920"},
+        "refresh_interval_minutes": 1,
+        "api_usage": {
+            "requests_last_minute": 5,
+            "requests_last_hour": 101,
+            "requests_since_start": 300,
+            "request_limit_per_minute": 45,
+            "last_http_status": 403,
+            "cooldown_seconds_remaining": 98,
+            "cooldown_reason": "HTTP 403",
+        },
+    }
+    record = build_route_payload([train(1, 0)], stations, None)
+    assert record["api_usage"] == stations["api_usage"]
+    assert record["departures"][0]["line"] == "S6"
+    assert "client_id" not in json.dumps(record)
+    assert "api_key" not in json.dumps(record)

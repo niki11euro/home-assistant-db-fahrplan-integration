@@ -11,6 +11,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -51,6 +52,7 @@ async def async_setup_entry(
             LastRefreshSensor(coordinator, entry.entry_id, subentry.subentry_id, device),
             AverageDelaySensor(coordinator, entry.entry_id, subentry.subentry_id, device),
             RouteJSONSensor(coordinator, entry.entry_id, subentry.subentry_id, device),
+            APIUsageSensor(coordinator, entry.entry_id, subentry.subentry_id, device),
         ])
         async_add_entities(entities, config_subentry_id=subentry.subentry_id)
         await coordinator.async_refresh()
@@ -264,3 +266,31 @@ class RouteJSONSensor(RouteEntity):
         # HA states are limited to 255 chars: the complete JSON therefore
         # lives in attributes, while the state is a small departure count.
         return {"data": payload, "json": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}
+
+
+class APIUsageSensor(RouteEntity):
+    """Account-wide DB API request rate, visible even during an API outage."""
+
+    _attr_translation_key = "api_request_usage"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:api"
+    _attr_native_unit_of_measurement = "requests"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self, coordinator: RouteCoordinator, entry_id: str, subentry_id: str,
+        device: DeviceInfo,
+    ) -> None:
+        super().__init__(coordinator, entry_id, subentry_id, device, "api_usage")
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.api_usage["requests_last_minute"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.coordinator.api_usage

@@ -64,6 +64,11 @@ class RouteCoordinator(DataUpdateCoordinator[list[Departure]]):
         return self.history.summary(datetime.now(BERLIN))
 
     @property
+    def api_usage(self) -> dict:
+        """Shared API usage and cooldown diagnostics without credentials."""
+        return self._client.request_statistics
+
+    @property
     def route_details(self) -> dict:
         """Stable station IDs, official names and friendly names."""
         return {
@@ -78,6 +83,7 @@ class RouteCoordinator(DataUpdateCoordinator[list[Departure]]):
                 "display_name": self._config.get(CONF_DEST_DISPLAY_NAME) or self._config[CONF_TO_NAME],
             },
             "refresh_interval_minutes": int(self.update_interval.total_seconds() / 60),
+            "api_usage": self.api_usage,
         }
 
     async def async_manual_refresh(self) -> None:
