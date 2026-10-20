@@ -96,6 +96,7 @@ class RouteCoordinator(DataUpdateCoordinator[list[Departure]]):
             result = await self._client.departures(
                 origin_eva=self._config[CONF_FROM_EVA],
                 destination_name=self._config[CONF_TO_NAME],
+                destination_eva=self._config[CONF_TO_EVA],
                 hours=int(self._config.get(CONF_LOOKAHEAD, DEFAULT_LOOKAHEAD)),
                 include_cancelled=bool(self._config.get(CONF_INCLUDE_CANCELLED, False)),
                 force=force,

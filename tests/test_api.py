@@ -115,3 +115,41 @@ async def test_manual_refresh_bypasses_fchg_and_plan_cache():
     assert len(session.calls) == count
     await client.departures("8006671", "Trudering, München", hours=1, now=now, force=True)
     assert len(session.calls) == 2 * count
+
+@pytest.mark.asyncio
+async def test_origin_to_destination_arrival_board_realtime_and_lost_destination():
+    class TwoBoards(FakeSession):
+        destination_fails = False
+        def get(self, url, *, headers, timeout):
+            self.calls.append(url)
+            if "/fchg/8098263" in url:
+                return FakeResponse(200, "<timetable/>")
+            if "/fchg/8006671" in url:
+                if self.destination_fails:
+                    return FakeResponse(503, "temporarily unavailable")
+                return FakeResponse(200, '<timetable><s id="abc-2610201311-28"><ar ct="2610201424"/></s></timetable>')
+            if "/plan/8098263" in url:
+                return FakeResponse(200, '<timetable><s id="abc-2610201311-16"><tl c="S" n="6665"/><dp pt="2610201348" l="S6" pp="1" ppth="München Ost|Zorneding|Grafing Bahnhof"/></s></timetable>')
+            if "/plan/8006671" in url:
+                return FakeResponse(200, '<timetable><s id="abc-2610201311-28"><tl c="S" n="6665"/><ar pt="2610201422" pp="2"/></s></timetable>')
+            return FakeResponse(404, "nothing")
+
+    now = datetime(2026,10,20,13,0,tzinfo=ZoneInfo("Europe/Berlin"))
+    ok = TwoBoards()
+    client = DBClient(ok, "id", "key")
+    deps = await client.departures("8098263", "Zorneding", hours=1, now=now, destination_eva="8006671")
+    assert len(deps) == 1
+    assert deps[0].arrival_scheduled.strftime("%H:%M") == "14:22"
+    assert deps[0].arrival_expected.strftime("%H:%M") == "14:24"
+    assert deps[0].arrival_delay_minutes == 2
+    assert any("/plan/8006671/" in url for url in ok.calls)
+
+    failing = TwoBoards()
+    failing.destination_fails = True
+    broken_client = DBClient(failing, "id", "key")
+    fallback = await broken_client.departures(
+        "8098263", "Zorneding", hours=1, now=now, destination_eva="8006671"
+    )
+    assert len(fallback) == 1
+    assert fallback[0].arrival_expected is None
+

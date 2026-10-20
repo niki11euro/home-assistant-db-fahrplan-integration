@@ -2,12 +2,15 @@
 
 A community Home Assistant custom integration for the **official Deutsche Bahn Timetables API**. Configure your own DB API credentials once and add as many independent direct train connections as you like, each with the next **three departures**. Designed for HACS custom repositories and the native Home Assistant UI.
 
+> **v2.3.0**: Real-time arrival predictions for each route using the matching destination station board. When no reliable matching stop exists, the arrival remains unknown. (Previous v2.2.0 features retained.)
+
 > **v2.2.0**: improved direct-stop matching, manual refresh button, 18 detailed train sensors, average delay and JSON snapshot per route, and separate friendly station labels. Unit tested; live DB data depends on the API response. Unofficial community integration.
 
 ## Features
 
 - **One API account, many connections**: Uses native Home Assistant *config subentries*. Each connection gets its own device and polling interval.
 - **Station search and library**: Search the official DB endpoint by name, EVA number or DS100 code, select the correct EVA ID, then save it in the account-wide library. New connections select both endpoints from dropdowns of saved stations, without repeating an API search. Configure an optional station display name without changing the official DB name or EVA ID.
+- **Predicted arrival at the chosen destination:** Planned and updated target-station times are read from the destination EVA timetable and matched by the DB journey ID, never estimated using a fixed travel duration. The three new arrival times, dates and delays are also separate sensors. If DB does not provide a matching arrival, values stay unknown. Destination-board failures do not hide valid departure information.
 - **Three original departure timestamp sensors** (unchanged unique IDs for existing dashboards) plus **18 new dedicated values**: for each of three trains a departure time, local date, line (e.g. `S6`), final terminus (e.g. `Tutzing`), platform and delay in minutes.
 - **Summary sensors**: count, last successful update, average delay in minutes (arithmetic mean of the up to three upcoming, non-cancelled trips; empty result = unknown), and a full route JSON snapshot.
 - **Manual refresh**: One refresh button per connection forces new planned and realtime API requests, bypassing normal caches, while respecting quota limits.

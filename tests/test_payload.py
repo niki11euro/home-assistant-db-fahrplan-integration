@@ -34,7 +34,7 @@ def test_payload_contains_three_trains_every_required_field_and_eva_ids():
     assert result["departure_count"] == 3
     assert result["average_delay_minutes"] is None
     assert result["current_three_average_delay_minutes"] == 4
-    assert result["schema_version"] == 2
+    assert result["schema_version"] == 3
     assert result["history"]["sample_count"] == 0
     assert result["destination"]["eva"] == "370920"
     assert result["destination"]["station_name"] != result["destination"]["display_name"]
@@ -74,3 +74,26 @@ def test_history_in_json_is_distinct_from_three_upcoming_predictions():
     assert failed["departure_count"] is None
     assert failed["average_delay_minutes"] == 4.4
     assert failed["current_three_average_delay_minutes"] is None
+
+def test_destination_arrival_serialized_when_available():
+    from dataclasses import replace
+    dep = train(1,3)
+    target = replace(
+        dep,
+        arrival_scheduled=datetime(2026,10,20,11,35,tzinfo=BERLIN),
+        arrival_expected=datetime(2026,10,20,11,37,tzinfo=BERLIN),
+        arrival_platform="2",
+        arrival_delay_minutes=2,
+    )
+    route = {"origin":{"eva":"8098263"},"destination":{"eva":"8006671"},"refresh_interval_minutes":1}
+    payload = build_route_payload([target,dep],route,None)["departures"]
+    assert payload[0]["arrival_datetime"] == "2026-10-20T11:37:00+02:00"
+    assert payload[0]["arrival_time"] == "11:37"
+    assert payload[0]["arrival_date"] == "2026-10-20"
+    assert payload[0]["scheduled_arrival"] == "2026-10-20T11:35:00+02:00"
+    assert payload[0]["arrival_source"] == "destination_board"
+    assert payload[0]["arrival_platform"] == "2"
+    assert payload[0]["arrival_delay_minutes"] == 2
+    assert payload[1]["arrival_time"] is None
+    assert payload[1]["arrival_source"] is None
+

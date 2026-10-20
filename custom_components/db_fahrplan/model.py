@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 import re
 import unicodedata
@@ -43,6 +43,11 @@ class Departure:
     delay_minutes: int | None
     cancelled: bool
     path: tuple[str, ...]
+    arrival_scheduled: datetime | None = None
+    arrival_expected: datetime | None = None
+    arrival_platform: str | None = None
+    arrival_delay_minutes: int | None = None
+    arrival_cancelled: bool = False
 
 
 def parse_db_time(value: str | None) -> datetime | None:
@@ -84,31 +89,34 @@ def parse_board(xml: str | bytes) -> dict[str, dict]:
             continue
         label: dict[str, str] = {}
         departure: dict[str, str] = {}
+        arrival: dict[str, str] = {}
         for child in stop:
             tag = _local_tag(child.tag)
             if tag == "tl":
                 label = dict(child.attrib)
             elif tag == "dp":
                 departure = dict(child.attrib)
-        if departure:
-            result[stop_id] = {"tl": label, "dp": departure}
+            elif tag == "ar":
+                arrival = dict(child.attrib)
+        if departure or arrival:
+            result[stop_id] = {"tl": label, "dp": departure, "ar": arrival}
     return result
 
 
 def merge_boards(
     plan: dict[str, dict], changes: dict[str, dict]
 ) -> dict[str, dict]:
-    """Overlay changed fields without discarding untouched planned values."""
-    merged = {key: {"tl": value["tl"].copy(), "dp": value["dp"].copy()}
-              for key, value in plan.items()}
+    """Overlay live arrival and departure changes without losing planned data."""
+    fields = ("tl", "ar", "dp")
+    merged = {
+        stop_id: {field: item.get(field, {}).copy() for field in fields}
+        for stop_id, item in plan.items()
+    }
     for stop_id, item in changes.items():
-        if stop_id not in merged:
-            merged[stop_id] = {"tl": item["tl"].copy(), "dp": item["dp"].copy()}
-            continue
-        merged[stop_id]["tl"].update(item["tl"])
-        merged[stop_id]["dp"].update(item["dp"])
+        target = merged.setdefault(stop_id, {field: {} for field in fields})
+        for field in fields:
+            target[field].update(item.get(field, {}))
     return merged
-
 
 def normalize_station(name: str) -> str:
     """Canonicalize DB station names, without accepting substring matches."""
@@ -158,8 +166,9 @@ def select_departures(
     now: datetime,
     hours: int = 4,
     include_cancelled: bool = False,
+    limit: int = 3,
 ) -> list[Departure]:
-    """Return at most three upcoming direct trains visiting `destination`."""
+    """Return the next direct trains visiting `destination`."""
     destination_keys = station_match_keys(destination)
     if not destination_keys:
         return []
@@ -167,6 +176,8 @@ def select_departures(
     departures: list[Departure] = []
     for stop_id, item in merge_boards(plan, changes).items():
         dp = item["dp"]
+        if not dp:
+            continue
         path = tuple(x.strip() for x in (dp.get("cpth") or dp.get("ppth") or "").split("|") if x.strip())
         if not any(station_match_keys(x) & destination_keys for x in path):
             continue
@@ -200,4 +211,72 @@ def select_departures(
             path=path,
         ))
     departures.sort(key=lambda dep: (dep.expected, dep.stop_id))
-    return departures[:3]
+    return departures[:limit]
+
+
+def _journey_id(stop_id: str) -> tuple[str, int] | None:
+    """Station-specific stop IDs share a trip prefix and end in stop order."""
+    if "-" not in stop_id:
+        return None
+    trip, number = stop_id.rsplit("-", 1)
+    if not trip or not number.isdecimal():
+        return None
+    return trip, int(number)
+
+
+def attach_destination_arrivals(
+    departures: list[Departure],
+    destination_plan: dict[str, dict],
+    destination_changes: dict[str, dict],
+) -> list[Departure]:
+    """Attach destination-station arrival prognosis to matching train journeys.
+
+    Never guess a journey time from the route or line. A missing match keeps
+    the arrival unknown; an explicitly cancelled destination stop is excluded.
+    """
+    arrivals: dict[str, list[tuple[int, dict[str, str]]]] = {}
+    for stop_id, data in merge_boards(destination_plan, destination_changes).items():
+        journey = _journey_id(stop_id)
+        ar = data.get("ar", {})
+        if journey is None or not ar:
+            continue
+        arrivals.setdefault(journey[0], []).append((journey[1], ar))
+    matched: list[Departure] = []
+    for departure in departures:
+        journey = _journey_id(departure.stop_id)
+        if journey is None:
+            matched.append(departure)
+            continue
+        candidates = sorted(
+            (order, ar) for order, ar in arrivals.get(journey[0], [])
+            if order > journey[1]
+        )
+        suitable: tuple[datetime | None, datetime | None, dict[str, str]] | None = None
+        for _, ar in candidates:
+            planned = parse_db_time(ar.get("pt"))
+            forecast = parse_db_time(ar.get("ct")) or planned
+            if forecast is None:
+                continue
+            # A destination stop must be later than the origin; reject
+            # stale or inconsistent DB forecasts rather than invent times.
+            if forecast < departure.expected:
+                continue
+            suitable = planned, forecast, ar
+            break
+        if suitable is None:
+            matched.append(departure)
+            continue
+        planned, forecast, ar = suitable
+        if (ar.get("cs") or ar.get("ps")) == "c":
+            continue  # The train does not actually stop at the target.
+        matched.append(replace(
+            departure,
+            arrival_scheduled=planned,
+            arrival_expected=forecast,
+            arrival_platform=ar.get("cp") or ar.get("pp"),
+            arrival_delay_minutes=(
+                round((forecast - planned).total_seconds() / 60)
+                if planned is not None else None
+            ),
+        ))
+    return matched

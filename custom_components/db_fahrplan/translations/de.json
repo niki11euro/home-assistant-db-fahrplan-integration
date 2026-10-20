@@ -165,6 +165,15 @@
       },
       "json_route": {
         "name": "Fahrplan JSON"
+      },
+      "arrival_time": {
+        "name": "Bahn {number} Ankunft am Ziel"
+      },
+      "arrival_date": {
+        "name": "Bahn {number} Ankunftsdatum"
+      },
+      "arrival_delay_minutes": {
+        "name": "Bahn {number} Ankunftsverspätung"
       }
     },
     "button": {

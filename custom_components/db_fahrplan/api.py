@@ -13,7 +13,7 @@ from defusedxml.common import DefusedXmlException
 from xml.etree.ElementTree import ParseError
 
 from .const import API_BASE_URL
-from .model import BERLIN, Station, Departure, parse_board, parse_stations, select_departures
+from .model import (BERLIN, Station, Departure, parse_board, parse_stations, select_departures, attach_destination_arrivals)
 
 
 class DBAPIError(Exception):
@@ -133,8 +133,9 @@ class DBClient:
         include_cancelled: bool = False,
         now: datetime | None = None,
         force: bool = False,
+        destination_eva: str | None = None,
     ) -> list[Departure]:
-        """Fetch a shared station board and filter a direct destination."""
+        """Fetch direct connections with optional arrival time at the target EVA."""
         if not origin_eva.isdigit() or not (1 <= hours <= 8):
             raise DBAPIError("Invalid station EVA number or lookahead")
         current = now or datetime.now(BERLIN)
@@ -149,6 +150,38 @@ class DBClient:
         planned: dict[str, dict] = {}
         for slice_ in planned_slices:
             planned.update(slice_)
-        return select_departures(
-            planned, changes, destination_name, current, hours, include_cancelled
+        candidates = select_departures(
+            planned, changes, destination_name, current, hours,
+            include_cancelled, limit=6 if destination_eva else 3,
         )
+        if not candidates or not destination_eva:
+            return candidates[:3]
+        if not destination_eva.isdigit():
+            raise DBAPIError("Invalid destination station EVA number")
+
+        # Fetch the destination's arrival board: its <ar> times are the
+        # only reliable source for the target-station arrival prediction.
+        # A three-hour window covers normal regional/S-Bahn travel; if
+        # no matching destination stop is found the arrival stays unknown.
+        earliest = min(d.scheduled or d.expected for d in candidates)
+        latest = max(d.scheduled or d.expected for d in candidates) + timedelta(hours=3)
+        first_hour = earliest.replace(minute=0, second=0, microsecond=0)
+        number_hours = int((latest - first_hour).total_seconds() // 3600) + 1
+        try:
+            arrivals_per_hour, destination_changes = await asyncio.gather(
+                asyncio.gather(*(
+                    self._planned(destination_eva, first_hour + timedelta(hours=i), force=force)
+                    for i in range(number_hours)
+                )),
+                self._changes(destination_eva, force=force),
+            )
+        except DBAPIError:
+            # Partial destination-board outage must not suppress departures.
+            return candidates[:3]
+
+        arrival_plan: dict[str, dict] = {}
+        for arrival_slice in arrivals_per_hour:
+            arrival_plan.update(arrival_slice)
+        return attach_destination_arrivals(
+            candidates, arrival_plan, destination_changes
+        )[:3]

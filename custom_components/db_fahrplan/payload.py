@@ -34,6 +34,11 @@ def build_route_payload(
     for number, train in enumerate((departures or [])[:3], start=1):
         expected = train.expected.astimezone(BERLIN)
         scheduled = train.scheduled.astimezone(BERLIN) if train.scheduled else None
+        arrival = train.arrival_expected.astimezone(BERLIN) if train.arrival_expected else None
+        planned_arrival = (
+            train.arrival_scheduled.astimezone(BERLIN)
+            if train.arrival_scheduled else None
+        )
         trains.append({
             "number": number,
             "line": train.line,
@@ -46,6 +51,13 @@ def build_route_payload(
             "platform": train.platform,
             "planned_platform": train.planned_platform,
             "delay_minutes": train.delay_minutes,
+            "arrival_date": arrival.date().isoformat() if arrival else None,
+            "arrival_time": arrival.strftime("%H:%M") if arrival else None,
+            "arrival_datetime": arrival.isoformat() if arrival else None,
+            "scheduled_arrival": planned_arrival.isoformat() if planned_arrival else None,
+            "arrival_platform": train.arrival_platform,
+            "arrival_delay_minutes": train.arrival_delay_minutes,
+            "arrival_source": "destination_board" if arrival else None,
             "cancelled": train.cancelled,
             "stop_id": train.stop_id,
             "stops": list(train.path),
@@ -58,7 +70,7 @@ def build_route_payload(
         "observation_method": "last_forecast_near_departure",
     }
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "available": available,
         "origin": dict(route_details["origin"]),
         "destination": dict(route_details["destination"]),

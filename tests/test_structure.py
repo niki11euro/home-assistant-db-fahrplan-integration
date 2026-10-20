@@ -60,7 +60,21 @@ def test_button_platform_json_sensor_and_translations():
     for name in ("strings.json", "translations/de.json", "translations/en.json"):
         translated = json.loads((base / name).read_text())
         assert "refresh" in translated["entity"]["button"]
-        for key in ("departure_time", "departure_date", "line", "terminal", "platform", "delay_minutes", "average_delay", "json_route"):
+        for key in ("departure_time", "departure_date", "line", "terminal", "platform", "delay_minutes", "arrival_time", "arrival_date", "arrival_delay_minutes", "average_delay", "json_route"):
             assert key in translated["entity"]["sensor"]
         assert "set_display_name" in translated["options"]["step"]["init"]["menu_options"]
         assert "history_days" in translated["config_subentries"]["route"]["step"]["user"]["data"]
+
+def test_arrival_matching_is_based_on_target_eva_and_timetable_arrivals():
+    base = ROOT / "custom_components" / "db_fahrplan"
+    api = (base / "api.py").read_text()
+    model = (base / "model.py").read_text()
+    sensor = (base / "sensor.py").read_text()
+    payload = (base / "payload.py").read_text()
+    assert "destination_eva" in api
+    assert "attach_destination_arrivals" in model
+    assert '"ar": arrival' in model
+    assert '"schema_version": 3' in payload
+    assert "arrival_datetime" in payload
+    assert "arrival_time" in sensor
+

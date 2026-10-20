@@ -88,3 +88,37 @@ def test_saved_eva_destination_name_matches_official_path_variants():
     assert result[0].line == "S4"
     assert result[1].line == "S6"
     assert result[1].destination == "Tutzing"
+
+def test_destination_arrival_matches_journey_not_sbahn_line():
+    from custom_components.db_fahrplan.model import attach_destination_arrivals
+    plan = parse_board('''<timetable>
+      <s id="-12345-2610201300-16"><tl c="S" n="6665"/><dp pt="2610201347" l="S6" ppth="München Ost|Zorneding|Ebersberg"/></s>
+      <s id="-23456-2610201300-16"><tl c="S" n="6667"/><dp pt="2610201357" l="S6" ppth="München Ost|Zorneding|Ebersberg"/></s>
+    </timetable>''')
+    deps = select_departures(plan, {}, "Zorneding", datetime(2026,10,20,13,0,tzinfo=BERLIN))
+    target = parse_board('''<timetable>
+      <s id="-12345-2610201300-28"><tl c="S" n="6665"/><ar pt="2610201422" pp="2"/></s>
+      <s id="-23456-2610201300-28"><tl c="S" n="6667"/><ar pt="2610201432" pp="2"/></s>
+    </timetable>''')
+    changes = parse_board('''<timetable><s id="-12345-2610201300-28"><ar ct="2610201425" cp="1"/></s></timetable>''')
+    assert len(target) == 2  # Arrival-only stops must survive XML parsing.
+    result = attach_destination_arrivals(deps, target, changes)
+    assert len(result) == 2
+    assert result[0].arrival_expected.strftime("%H:%M") == "14:25"
+    assert result[0].arrival_scheduled.strftime("%H:%M") == "14:22"
+    assert result[0].arrival_delay_minutes == 3
+    assert result[0].arrival_platform == "1"
+    assert result[1].arrival_expected.strftime("%H:%M") == "14:32"
+    assert result[1].arrival_delay_minutes == 0
+
+
+def test_missing_arrival_remains_unknown_and_cancelled_target_is_removed():
+    from custom_components.db_fahrplan.model import attach_destination_arrivals
+    plan = parse_board('<timetable><s id="trip-2610201300-16"><tl c="S" n="6665"/><dp pt="2610201347" ppth="Zorneding|Ebersberg"/></s></timetable>')
+    deps = select_departures(plan, {}, "Zorneding", datetime(2026,10,20,13,0,tzinfo=BERLIN))
+    assert attach_destination_arrivals(deps, {}, {})[0].arrival_expected is None
+    cancelled = parse_board('<timetable><s id="trip-2610201300-28"><ar pt="2610201422" cs="c"/></s></timetable>')
+    assert attach_destination_arrivals(deps, cancelled, {}) == []
+    earlier_stop = parse_board('<timetable><s id="trip-2610201300-10"><ar pt="2610201332"/></s></timetable>')
+    assert attach_destination_arrivals(deps, earlier_stop, {})[0].arrival_expected is None
+

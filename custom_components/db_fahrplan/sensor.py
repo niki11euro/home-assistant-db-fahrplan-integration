@@ -44,7 +44,7 @@ async def async_setup_entry(
             entities.extend(
                 DepartureFieldSensor(coordinator, entry.entry_id, subentry.subentry_id,
                                      device, position, field)
-                for field in ("departure_time", "departure_date", "line", "terminal", "platform", "delay_minutes")
+                for field in ("departure_time", "departure_date", "line", "terminal", "platform", "delay_minutes", "arrival_time", "arrival_date", "arrival_delay_minutes")
             )
         entities.extend([
             DepartureCountSensor(coordinator, entry.entry_id, subentry.subentry_id, device),
@@ -120,6 +120,10 @@ class DepartureSensor(DepartureEntity):
             "planned_departure": dep.scheduled.isoformat() if dep.scheduled else None,
             "expected_departure": dep.expected.isoformat(),
             "delay_minutes": dep.delay_minutes,
+            "arrival_time": dep.arrival_expected.isoformat() if dep.arrival_expected else None,
+            "planned_arrival": dep.arrival_scheduled.isoformat() if dep.arrival_scheduled else None,
+            "arrival_platform": dep.arrival_platform,
+            "arrival_delay_minutes": dep.arrival_delay_minutes,
             "minutes_until_departure": max(0, ceil((dep.expected - now).total_seconds() / 60)),
             "cancelled": dep.cancelled,
             "stops": list(dep.path),
@@ -140,9 +144,9 @@ class DepartureFieldSensor(DepartureEntity):
         self._field = field
         self._attr_translation_key = field
         self._attr_translation_placeholders = {"number": str(position + 1)}
-        if field == "departure_date":
+        if field in ("departure_date", "arrival_date"):
             self._attr_device_class = SensorDeviceClass.DATE
-        if field == "delay_minutes":
+        if field in ("delay_minutes", "arrival_delay_minutes"):
             self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
             self._attr_state_class = SensorStateClass.MEASUREMENT
 
@@ -155,6 +159,12 @@ class DepartureFieldSensor(DepartureEntity):
             return dep.expected.astimezone(BERLIN).strftime("%H:%M")
         if self._field == "departure_date":
             return dep.expected.astimezone(BERLIN).date()
+        if self._field == "arrival_time":
+            return dep.arrival_expected.astimezone(BERLIN).strftime("%H:%M") if dep.arrival_expected else None
+        if self._field == "arrival_date":
+            return dep.arrival_expected.astimezone(BERLIN).date() if dep.arrival_expected else None
+        if self._field == "arrival_delay_minutes":
+            return dep.arrival_delay_minutes
         if self._field == "line":
             return dep.line
         if self._field == "terminal":
