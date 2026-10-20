@@ -2,14 +2,16 @@
 
 A community Home Assistant custom integration for the **official Deutsche Bahn Timetables API**. Configure your own DB API credentials once and add as many independent direct train connections as you like, each with the next **three departures**. Designed for HACS custom repositories and the native Home Assistant UI.
 
-> **v2.0.0**: saved-station dropdowns, multiple connection subentries and GitHub release-based versioning. Automated tests pass; authenticated live timetable results still require validation. Unofficial community integration.
+> **v2.1.0**: improved direct-stop matching, manual refresh button, 18 detailed train sensors, average delay and JSON snapshot per route, and separate friendly station labels. Unit tested; live DB data depends on the API response. Unofficial community integration.
 
 ## Features
 
 - **One API account, many connections**: Uses native Home Assistant *config subentries*. Each connection gets its own device and polling interval.
-- **Station search and library**: Search the official DB endpoint by name, EVA number or DS100 code, select the correct EVA ID, then save it in the account-wide library. New connections select both endpoints from searchable dropdowns of saved stations, without repeating an API search.
-- **Exactly three departure sensors per connection**: Timestamp state (estimated or planned) plus line, platform, scheduled departure, delay, destination, cancellation status, route and minutes until departure as attributes.
-- **Two additional sensors**: Number of available departures and last successful refresh for each connection.
+- **Station search and library**: Search the official DB endpoint by name, EVA number or DS100 code, select the correct EVA ID, then save it in the account-wide library. New connections select both endpoints from dropdowns of saved stations, without repeating an API search. Configure an optional station display name without changing the official DB name or EVA ID.
+- **Three original departure timestamp sensors** (unchanged unique IDs for existing dashboards) plus **18 new dedicated values**: for each of three trains a departure time, local date, line (e.g. `S6`), final terminus (e.g. `Tutzing`), platform and delay in minutes.
+- **Summary sensors**: count, last successful update, average delay in minutes (arithmetic mean of the up to three upcoming, non-cancelled trips; empty result = unknown), and a full route JSON snapshot.
+- **Manual refresh**: One refresh button per connection forces new planned and realtime API requests, bypassing normal caches, while respecting quota limits.
+- **JSON for automation**: The sensor state is a small departure count; `data` is the complete JSON-compatible dictionary, and `json` is the serialized JSON string (sensor states cannot safely hold large JSON documents). The snapshot includes official station names, EVA IDs, friendly display names, API status, timestamps, train details, delay mean and paths.
 - **Options per connection**: Name, departure station, destination, refresh interval **1–60 minutes** (default **1 minute**), time horizon **1–8 hours** (default **4 hours**), and whether cancelled trains are shown.
 - **Live changes**: Merges `/plan/...` with `/fchg/...` for delays, cancellations, changed platforms and route changes. Identical origin-station requests are shared across connections.
 - **Efficient and considerate**: 30-minute plan cache, 45-second change cache and account-wide request safeguard at 55 calls/minute (DB free tier: 60 calls/minute).
@@ -34,7 +36,7 @@ Updating the GitHub repository does not automatically install code on Home Assis
 3. Go to **Settings → Devices & services → Add integration → DB Fahrplan** and enter your API credentials.
 4. Open **Configure** on the DB Fahrplan API account and save at least two stations using **Search and save station**.
 5. Add a new **Connection** subentry. Choose the start and destination from the two saved-station dropdowns; the EVA IDs are used automatically.
-6. Repeat step 5 to add further routes. Each route can be edited and removed individually. Use **Configure** on the main account to manage the saved-station library.
+6. Repeat step 5 to add further routes. Each route can be edited and removed individually. Use **Configure** on the main account to manage the saved-station library and optional station display names.
 
 Required: **Home Assistant 2026.3.0+** (native subentries and local integration brand assets). HACS is optional for a manual installation, but recommended for future update notifications.
 
@@ -51,13 +53,46 @@ Create a connection with:
 | Lookahead | `4` hours |
 | Show cancelled | `No` |
 
-This will create a connection device with **Departure 1**, **Departure 2**, **Departure 3**, **Available departures**, and **Last successful update**. Each departure timestamp sensor has these attributes: `line`, `train`, `direction`, `platform`, `planned_platform`, `planned_departure`, `expected_departure`, `delay_minutes`, `minutes_until_departure`, `cancelled`, `stops`, and `stop_id`.
+This will create a connection device with **Departure 1**, **Departure 2**, **Departure 3**, **Available departures**, **Last successful update**, **Average delay**, **Timetable JSON**, the 18 requested per-train detail sensors, and a **Refresh now** button. Each departure timestamp sensor has these attributes: `line`, `train`, `direction`, `platform`, `planned_platform`, `planned_departure`, `expected_departure`, `delay_minutes`, `minutes_until_departure`, `cancelled`, `stops`, and `stop_id`.
 
 The destination must appear as a stop **after the origin** on the same train's route. Transfers are *not* planned. Routes that do not have a matching stop in the fetched horizon show fewer than three departures (or none).
 
+### JSON snapshot for dashboards and automations
+
+Each route has a `Fahrplan JSON` sensor. The **state is the current train count** (0 through 3); the `data` attribute contains a JSON-serializable object, and `json` contains the same payload as a JSON string. A sensor's state cannot safely hold an entire JSON document because Home Assistant caps state length at 255 characters.
+
+Example (illustrative data, **not live times**):
+
+```json
+{
+  "schema_version": 1,
+  "available": true,
+  "origin": {"eva": "8006671", "station_name": "Zorneding", "display_name": "Zorneding"},
+  "destination": {"eva": "370920", "station_name": "Trudering, München", "display_name": "Trudering"},
+  "refresh_interval_minutes": 1,
+  "last_success": "2026-10-20T12:00:00+02:00",
+  "last_attempt": "2026-10-20T12:00:00+02:00",
+  "last_error": null,
+  "departure_count": 1,
+  "average_delay_minutes": 3.0,
+  "departures": [
+    {"number": 1, "line": "S6", "train": "S 6", "terminal": "Tutzing",
+     "departure_date": "2026-10-20", "departure_time": "12:15",
+     "departure_datetime": "2026-10-20T12:15:00+02:00",
+     "scheduled_departure": "2026-10-20T12:12:00+02:00",
+     "platform": "1", "planned_platform": "1", "delay_minutes": 3,
+     "cancelled": false, "stop_id": "sample", "stops": ["Trudering", "München Ost", "Tutzing"]}
+  ]
+}
+```
+
+For Home Assistant templates, use `state_attr('sensor.<route>_fahrplan_json', 'data')` and access the `departures` list. In a dashboard, show the dedicated sensors directly. The `Refresh now` button can be pressed manually or through the normal `button.press` action. When the DB API is unreachable, the snapshot reports `available: false` and a non-sensitive `last_error`; the other sensors become unavailable instead of misleadingly reporting 0 trains.
+
+The **average delay** is calculated from the delay minutes of up to three upcoming, non-cancelled trains. Missing schedules and cancelled trains are excluded. `0` means no delay is reported, while unknown means no usable departures were available.
+
 ## Data model and limitations
 
-The **Timetables API is a station timetable, not a journey planner**. A connection is a *direct service calling at station Y*, not a guarantee of a ticketable trip or successful transfer. The API's departure `ppth/cpth` station names are matched with the selected destination station name, not with destination EVA IDs because the path string contains names. Common 'Hauptbahnhof/Hbf' spelling variants are normalized; unknown aliases are not assumed equal.
+The **Timetables API is a station timetable, not a journey planner**. A connection is a *direct service calling at station Y*, not a guarantee of a ticketable trip or successful transfer. The route stores the exact selected **origin and destination EVA IDs**, always queries the **origin EVA ID**, and keeps the official DB station name separately from its user-friendly display name. The Timetables `ppth/cpth` route strings contain *station names, not EVA IDs*, so individual intermediate stops cannot be matched by ID through this API. The official destination name is matched to the path using conservative spelling variants (for example `Trudering, München`, `Trudering` and `München-Trudering`) to prevent false zero results. Display names never affect this filter.
 
 - Planned train data is cached for 30 minutes; reported changes are fetched at least every configured interval (45-second cache for shared station polls).
 - The search endpoint may return a limited set of results. Prefer a full official station name or EVA ID if an abbreviated search is ambiguous.
@@ -68,7 +103,7 @@ The **Timetables API is a station timetable, not a journey planner**. A connecti
 
 ## Versioning and icon behavior
 
-- HACS uses **GitHub Release** tags such as `v2.0.0` for version display. This repository publishes a release after its automated test suite passes when the manifest version changes on `main`.
+- HACS uses **GitHub Release** tags such as `v2.1.0` for version display. This repository publishes a release after its automated test suite passes when the manifest version changes on `main`.
 - Home Assistant 2026.3+ loads the bundled branding: `brand/icon.png` (256 x 256).
 - **HACS frontend limitation (2026.10):** The HACS update dialog can still display "icon not available" even though the bundled icon works in Home Assistant's integration view. Home Assistant Marketplace 2026.11 is expected to address this upstream behavior. Do not upgrade Home Assistant Core only to change the icon.
 - After installing a new version via HACS, restart Home Assistant to load the new Python code. Existing API credentials, station library and route subentries remain configured.
@@ -82,7 +117,9 @@ custom_components/db_fahrplan/
   model.py           # XML parsing and direct-route filtering
   coordinator.py     # per-connection refresh
   config_flow.py     # API credentials, station library, route wizard
-  sensor.py          # five sensors per route
+  sensor.py          # 25 sensors per route including JSON and averages
+  button.py          # one manual refresh button per route
+  payload.py         # JSON serialization and delay calculation
   const.py
   manifest.json
   strings.json

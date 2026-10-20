@@ -7,6 +7,9 @@ API_BASE_URL = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables
 CONF_CLIENT_ID = "client_id"
 CONF_API_KEY = "api_key"
 CONF_SAVED_STATIONS = "saved_stations"
+CONF_DISPLAY_NAME = "display_name"
+CONF_ORIGIN_DISPLAY_NAME = "_origin_display_name"
+CONF_DEST_DISPLAY_NAME = "_destination_display_name"
 CONF_NAME = "name"
 CONF_FROM_QUERY = "from_query"
 CONF_TO_QUERY = "to_query"
@@ -26,4 +29,4 @@ MIN_LOOKAHEAD = 1
 MAX_LOOKAHEAD = 8
 SUBENTRY_ROUTE = "route"
 
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "button"]

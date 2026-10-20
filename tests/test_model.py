@@ -73,3 +73,18 @@ def test_midnight_timestamps_are_date_aware():
     assert result[0].expected.day == 21
     assert parse_db_time("invalid") is None
     assert parse_db_time("2610210061") is None
+
+
+def test_saved_eva_destination_name_matches_official_path_variants():
+    """Real Zorneding -> Trudering saved official name differs from route path."""
+    from custom_components.db_fahrplan.model import station_match_keys
+    assert station_match_keys("Trudering, München") & station_match_keys("Trudering")
+    assert station_match_keys("Trudering, München") & station_match_keys("München-Trudering")
+    assert not (station_match_keys("Trudering, München") & station_match_keys("München Hbf"))
+    assert not (station_match_keys("München Hbf") & station_match_keys("München Ost"))
+    plan = parse_board('''<timetable><s id="1"><tl c="S" n="4"/><dp pt="2610201110" pp="1" l="S4" ppth="München-Trudering|München Ost|München Hbf"/></s><s id="2"><tl c="S" n="6"/><dp pt="2610201120" pp="2" l="S6" ppth="Trudering|München Ost|Tutzing"/></s></timetable>''')
+    result = select_departures(plan, {}, "Trudering, München", datetime(2026,10,20,11,0,tzinfo=BERLIN))
+    assert len(result) == 2
+    assert result[0].line == "S4"
+    assert result[1].line == "S6"
+    assert result[1].destination == "Tutzing"

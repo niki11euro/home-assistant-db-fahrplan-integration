@@ -21,7 +21,7 @@ import voluptuous as vol
 
 from .api import DBAPIError, DBAuthError, DBClient
 from .const import (
-    DOMAIN, NAME, CONF_CLIENT_ID, CONF_API_KEY, CONF_SAVED_STATIONS,
+    DOMAIN, NAME, CONF_CLIENT_ID, CONF_API_KEY, CONF_SAVED_STATIONS, CONF_DISPLAY_NAME,
     CONF_NAME, CONF_FROM_EVA,
     CONF_FROM_NAME, CONF_TO_EVA, CONF_TO_NAME, CONF_INTERVAL,
     CONF_LOOKAHEAD, CONF_INCLUDE_CANCELLED, DEFAULT_INTERVAL,
@@ -154,11 +154,12 @@ class DBOptionsFlow(OptionsFlowWithReload):
 
     def __init__(self) -> None:
         self._results: dict[str, Station] = {}
+        self._selected_eva = ""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="init", menu_options=["add_station", "remove_station"])
+        return self.async_show_menu(step_id="init", menu_options=["add_station", "set_display_name", "remove_station"])
 
     async def async_step_add_station(
         self, user_input: dict[str, Any] | None = None
@@ -193,13 +194,62 @@ class DBOptionsFlow(OptionsFlowWithReload):
         if user_input is not None:
             selected = self._results[user_input["station"]]
             saved = _saved_stations(self.config_entry)
-            saved[selected.eva] = {"name": selected.name, "ds100": selected.ds100}
+            previous = saved.get(selected.eva, {})
+            saved[selected.eva] = {
+                "name": selected.name, "ds100": selected.ds100,
+                "display_name": previous.get("display_name", ""),
+            }
             return self.async_create_entry(
                 title="", data={**self.config_entry.options, CONF_SAVED_STATIONS: saved}
             )
         return self.async_show_form(
             step_id="select_station",
             data_schema=vol.Schema({vol.Required("station"): _station_choices(list(self._results.values()))}),
+        )
+
+    async def async_step_set_display_name(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick a saved station whose friendly name should be changed."""
+        saved = _saved_stations(self.config_entry)
+        if not saved:
+            return self.async_abort(reason="no_saved_stations")
+        if user_input is not None:
+            self._selected_eva = user_input["station"]
+            return await self.async_step_station_display_name()
+        stations = [
+            Station(eva, data["name"], data.get("ds100", ""), data.get("display_name", ""))
+            for eva, data in saved.items()
+        ]
+        return self.async_show_form(
+            step_id="set_display_name",
+            data_schema=vol.Schema({vol.Required("station"): _station_choices(stations)}),
+        )
+
+    async def async_step_station_display_name(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        saved = _saved_stations(self.config_entry)
+        old = saved[self._selected_eva]
+        if user_input is not None:
+            new_name = user_input.get(CONF_DISPLAY_NAME, "").strip()
+            if len(new_name) > 80:
+                return self.async_show_form(
+                    step_id="station_display_name",
+                    data_schema=vol.Schema({
+                        vol.Optional(CONF_DISPLAY_NAME, default=old.get("display_name", "")): str,
+                    }),
+                    errors={CONF_DISPLAY_NAME: "name_too_long"},
+                )
+            saved[self._selected_eva] = {**old, "display_name": new_name}
+            return self.async_create_entry(
+                title="", data={**self.config_entry.options, CONF_SAVED_STATIONS: saved}
+            )
+        return self.async_show_form(
+            step_id="station_display_name",
+            data_schema=vol.Schema({
+                vol.Optional(CONF_DISPLAY_NAME, default=old.get("display_name", "")): str,
+            }),
         )
 
     async def async_step_remove_station(
@@ -213,7 +263,7 @@ class DBOptionsFlow(OptionsFlowWithReload):
             return self.async_create_entry(
                 title="", data={**self.config_entry.options, CONF_SAVED_STATIONS: saved}
             )
-        stations = [Station(eva=eva, name=data["name"], ds100=data.get("ds100", ""))
+        stations = [Station(eva=eva, name=data["name"], ds100=data.get("ds100", ""), display_name=data.get("display_name", ""))
                     for eva, data in saved.items()]
         return self.async_show_form(
             step_id="remove_station",
@@ -236,7 +286,7 @@ class DBRouteSubentryFlow(ConfigSubentryFlow):
         so the existing route is not silently changed or made uneditable.
         """
         stations = {
-            eva: Station(eva, data["name"], data.get("ds100", ""))
+            eva: Station(eva, data["name"], data.get("ds100", ""), data.get("display_name", ""))
             for eva, data in _saved_stations(self._get_entry()).items()
         }
         if self._editing:
@@ -248,7 +298,7 @@ class DBRouteSubentryFlow(ConfigSubentryFlow):
                 eva = old.get(eva_key)
                 if eva and eva not in stations:
                     stations[eva] = Station(eva, old.get(name_key) or eva, "")
-        return dict(sorted(stations.items(), key=lambda item: (item[1].name.casefold(), item[0])))
+        return dict(sorted(stations.items(), key=lambda item: ((item[1].display_name or item[1].name).casefold(), item[0])))
 
     def _schema(self, stations: dict[str, Station]) -> vol.Schema:
         """Present two dropdowns keyed by EVA ID, not free-form text fields."""
@@ -292,7 +342,7 @@ class DBRouteSubentryFlow(ConfigSubentryFlow):
                 else:
                     name = (user_input.get(CONF_NAME) or "").strip()
                     data = {
-                        CONF_NAME: name or f"{origin.name} \u2192 {destination.name}",
+                        CONF_NAME: name or f"{origin.display_name or origin.name} \u2192 {destination.display_name or destination.name}",
                         CONF_FROM_EVA: origin.eva,
                         CONF_FROM_NAME: origin.name,
                         CONF_TO_EVA: destination.eva,

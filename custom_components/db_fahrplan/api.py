@@ -75,16 +75,17 @@ class DBClient:
             raise DBAPIError("DB Timetables is temporarily unavailable") from err
 
     async def _get_cached(
-        self, key: str, seconds: int, loader: Callable[[], Awaitable[object]]
+        self, key: str, seconds: int, loader: Callable[[], Awaitable[object]],
+        *, force: bool = False,
     ) -> object:
         loop = asyncio.get_running_loop()
         cached = self._cached.get(key)
-        if cached is not None and cached[0] > loop.time():
+        if not force and cached is not None and cached[0] > loop.time():
             return cached[1]
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
             cached = self._cached.get(key)
-            if cached is not None and cached[0] > loop.time():
+            if not force and cached is not None and cached[0] > loop.time():
                 return cached[1]
             result = await loader()
             self._cached[key] = (loop.time() + seconds, result)
@@ -105,7 +106,7 @@ class DBClient:
 
         return await self._get_cached(f"station:{query.casefold()}", 300, load)  # type: ignore[return-value]
 
-    async def _planned(self, eva: str, hour: datetime) -> dict[str, dict]:
+    async def _planned(self, eva: str, hour: datetime, *, force: bool = False) -> dict[str, dict]:
         key = f"plan:{eva}:{hour:%y%m%d%H}"
 
         async def load() -> object:
@@ -115,9 +116,9 @@ class DBClient:
             except (ValueError, ParseError, DefusedXmlException) as err:
                 raise DBAPIError("DB Timetables returned malformed plan XML") from err
 
-        return await self._get_cached(key, 1800, load)  # type: ignore[return-value]
+        return await self._get_cached(key, 1800, load, force=force)  # type: ignore[return-value]
 
-    async def _changes(self, eva: str) -> dict[str, dict]:
+    async def _changes(self, eva: str, *, force: bool = False) -> dict[str, dict]:
         async def load() -> object:
             xml = await self._request(f"fchg/{eva}")
             try:
@@ -125,12 +126,13 @@ class DBClient:
             except (ValueError, ParseError, DefusedXmlException) as err:
                 raise DBAPIError("DB Timetables returned malformed changes XML") from err
 
-        return await self._get_cached(f"changes:{eva}", 45, load)  # type: ignore[return-value]
+        return await self._get_cached(f"changes:{eva}", 45, load, force=force)  # type: ignore[return-value]
 
     async def departures(
         self, origin_eva: str, destination_name: str, hours: int,
         include_cancelled: bool = False,
         now: datetime | None = None,
+        force: bool = False,
     ) -> list[Departure]:
         """Fetch a shared station board and filter a direct destination."""
         if not origin_eva.isdigit() or not (1 <= hours <= 8):
@@ -141,8 +143,8 @@ class DBClient:
         # Include final hour slice because the lookahead spans a rolling window.
         hours_to_fetch = [start + timedelta(hours=i) for i in range(hours + 1)]
         planned_slices, changes = await asyncio.gather(
-            asyncio.gather(*(self._planned(origin_eva, hour) for hour in hours_to_fetch)),
-            self._changes(origin_eva),
+            asyncio.gather(*(self._planned(origin_eva, hour, force=force) for hour in hours_to_fetch)),
+            self._changes(origin_eva, force=force),
         )
         planned: dict[str, dict] = {}
         for slice_ in planned_slices:

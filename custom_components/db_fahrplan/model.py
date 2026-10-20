@@ -20,11 +20,12 @@ class Station:
     eva: str
     name: str
     ds100: str = ""
+    display_name: str = ""
 
     @property
     def label(self) -> str:
         """Display label, including the unambiguous EVA number."""
-        return f"{self.name} (EVA {self.eva})"
+        return f"{self.display_name or self.name} (EVA {self.eva})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +120,37 @@ def normalize_station(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", name)
 
 
+def station_match_keys(name: str) -> set[str]:
+    """Return conservative variants of a DB station name.
+
+    /station names often contain city metadata ("Trudering, München")
+    while /plan departure paths call that stop "Trudering" or
+    "München-Trudering". Timetables path entries have *no EVA IDs*, so
+    exact EVA comparison is not possible for intermediate stops.
+    """
+    name = name.strip()
+    if not name:
+        return set()
+    variants = {normalize_station(name)}
+    if "," in name:
+        local, city = (part.strip() for part in name.split(",", 1))
+        if local and city:
+            variants.add(normalize_station(local))
+            variants.add(normalize_station(f"{city}-{local}"))
+    # DB city prefixes are common in path data; strip only known city
+    # prefixes, not arbitrary first words (avoid Hbf/Ost false matches).
+    city_names = ("München", "Berlin", "Hamburg", "Köln", "Frankfurt (Main)", "Frankfurt am Main", "Stuttgart", "Dresden", "Leipzig", "Bremen", "Nürnberg", "Augsburg")
+    for city in city_names:
+        for separator in ("-", " "):
+            prefix = city + separator
+            if name.casefold().startswith(prefix.casefold()):
+                local = name[len(prefix):].strip()
+                # A lone "Hbf" or "Ost" is not a distinct station name.
+                if len(normalize_station(local)) >= 5 and normalize_station(local) not in ("hbf", "ost", "west", "nord", "sud"):
+                    variants.add(normalize_station(local))
+    return {item for item in variants if item}
+
+
 def select_departures(
     plan: dict[str, dict],
     changes: dict[str, dict],
@@ -128,15 +160,15 @@ def select_departures(
     include_cancelled: bool = False,
 ) -> list[Departure]:
     """Return at most three upcoming direct trains visiting `destination`."""
-    destination_key = normalize_station(destination)
-    if not destination_key:
+    destination_keys = station_match_keys(destination)
+    if not destination_keys:
         return []
     stop_time = now + timedelta(hours=hours)
     departures: list[Departure] = []
     for stop_id, item in merge_boards(plan, changes).items():
         dp = item["dp"]
         path = tuple(x.strip() for x in (dp.get("cpth") or dp.get("ppth") or "").split("|") if x.strip())
-        if not any(normalize_station(x) == destination_key for x in path):
+        if not any(station_match_keys(x) & destination_keys for x in path):
             continue
         cancelled = (dp.get("cs") or dp.get("ps")) == "c"
         if cancelled and not include_cancelled:

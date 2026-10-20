@@ -102,3 +102,16 @@ async def test_rate_safeguard_prevents_more_than_55_calls_in_a_minute():
     with pytest.raises(DBRateLimitError):
         await client._request("station/Trudering")
     assert len(session.calls) == 55
+
+
+@pytest.mark.asyncio
+async def test_manual_refresh_bypasses_fchg_and_plan_cache():
+    session = FakeSession()
+    client = DBClient(session, "id", "key")
+    now = datetime(2026, 10, 20, 11, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+    await client.departures("8006671", "Trudering, München", hours=1, now=now)
+    count = len(session.calls)
+    await client.departures("8006671", "Trudering, München", hours=1, now=now)
+    assert len(session.calls) == count
+    await client.departures("8006671", "Trudering, München", hours=1, now=now, force=True)
+    assert len(session.calls) == 2 * count

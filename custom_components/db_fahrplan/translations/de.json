@@ -39,7 +39,8 @@
       "init": {
         "menu_options": {
           "add_station": "Bahnhof suchen und speichern",
-          "remove_station": "Gespeicherten Bahnhof entfernen"
+          "remove_station": "Gespeicherten Bahnhof entfernen",
+          "set_display_name": "Anzeigenamen eines Bahnhofs ändern"
         }
       },
       "add_station": {
@@ -59,12 +60,27 @@
         "data": {
           "station": "Bahnhof"
         }
+      },
+      "set_display_name": {
+        "title": "Bahnhof auswählen",
+        "description": "Wähle den gespeicherten Bahnhof aus. Die EVA ID und der offizielle DB-Bahnhofsname bleiben erhalten.",
+        "data": {
+          "station": "Gespeicherter Bahnhof"
+        }
+      },
+      "station_display_name": {
+        "title": "Anzeigenamen festlegen",
+        "description": "Optionaler Anzeigename für die Benutzeroberfläche. Leer lassen für den offiziellen DB-Namen.",
+        "data": {
+          "display_name": "Anzeigename (optional)"
+        }
       }
     },
     "error": {
       "invalid_auth": "DB API Zugangsdaten wurden abgelehnt.",
       "cannot_connect": "DB API nicht erreichbar.",
-      "no_stations": "Kein passender Bahnhof gefunden."
+      "no_stations": "Kein passender Bahnhof gefunden.",
+      "name_too_long": "Maximal 80 Zeichen erlaubt."
     },
     "abort": {
       "no_saved_stations": "Es sind keine Bahnhöfe gespeichert."
@@ -123,6 +139,35 @@
       },
       "last_update": {
         "name": "Letzte erfolgreiche Aktualisierung"
+      },
+      "departure_time": {
+        "name": "Bahn {number} Abfahrtszeit"
+      },
+      "departure_date": {
+        "name": "Bahn {number} Datum"
+      },
+      "line": {
+        "name": "Bahn {number} Linie"
+      },
+      "terminal": {
+        "name": "Bahn {number} Endbahnhof"
+      },
+      "platform": {
+        "name": "Bahn {number} Gleis"
+      },
+      "delay_minutes": {
+        "name": "Bahn {number} Verspätung"
+      },
+      "average_delay": {
+        "name": "Durchschnittliche Verspätung"
+      },
+      "json_route": {
+        "name": "Fahrplan JSON"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Jetzt aktualisieren"
       }
     }
   }

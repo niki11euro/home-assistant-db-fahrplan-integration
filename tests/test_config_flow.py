@@ -181,3 +181,40 @@ async def test_old_route_editable_after_stations_removed(flows):
     assert result["type"] == "update_entry"
     assert result["data_updates"]["from_eva"] == old["from_eva"]
     assert result["data_updates"]["name"] == "Zorneding \u2192 Muenchen-Trudering"
+
+
+@pytest.mark.asyncio
+async def test_custom_display_name_does_not_replace_official_station_name(flows):
+    stations = {
+        "8007380": {"name":"Zorneding","ds100":"MZOR", "display_name":"Heimat"},
+        "8004168": {"name":"Trudering, München","ds100":"PQTR", "display_name":"Stadt"},
+    }
+    flow = route(flows, stations)
+    form = await flow.async_step_user()
+    label = next(o["label"] for o in field(form,"to_eva")[1].config.options if o["value"]=="8004168")
+    assert "Stadt" in label
+    result = await flow.async_step_user({
+        "name":"", "from_eva":"8007380", "to_eva":"8004168",
+        "interval_minutes":1,"lookahead_hours":3,"include_cancelled":False,
+    })
+    assert result["data"]["to_name"]=="Trudering, München"
+    assert result["data"]["from_name"]=="Zorneding"
+    assert result["title"]=="Heimat → Stadt"
+
+
+@pytest.mark.asyncio
+async def test_station_display_name_saved_separately_from_official_record(flows):
+    opt = flows.DBOptionsFlow()
+    opt.config_entry = SimpleNamespace(options={"saved_stations": {
+        "370920": {"name": "Trudering, München", "ds100": "PQTR"}
+    }})
+    opt.async_show_form = lambda **kwargs: {"type": "form", **kwargs}
+    opt.async_create_entry = lambda **kwargs: {"type": "create_entry", **kwargs}
+    form = await opt.async_step_set_display_name()
+    assert form["step_id"] == "set_display_name"
+    form = await opt.async_step_set_display_name({"station": "370920"})
+    assert form["step_id"] == "station_display_name"
+    saved = await opt.async_step_station_display_name({"display_name": "Mein Bahnhof"})
+    assert saved["type"] == "create_entry"
+    item = saved["data"]["saved_stations"]["370920"]
+    assert item == {"name": "Trudering, München", "ds100": "PQTR", "display_name": "Mein Bahnhof"}

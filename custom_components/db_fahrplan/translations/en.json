@@ -39,7 +39,8 @@
       "init": {
         "menu_options": {
           "add_station": "Search and save station",
-          "remove_station": "Remove saved station"
+          "remove_station": "Remove saved station",
+          "set_display_name": "Change saved station display name"
         }
       },
       "add_station": {
@@ -59,12 +60,27 @@
         "data": {
           "station": "Station"
         }
+      },
+      "set_display_name": {
+        "title": "Choose saved station",
+        "description": "Choose the station. The EVA ID and official DB station name stay unchanged.",
+        "data": {
+          "station": "Saved station"
+        }
+      },
+      "station_display_name": {
+        "title": "Set display name",
+        "description": "Optional friendly name for the UI. Leave blank for the official DB station name.",
+        "data": {
+          "display_name": "Display name (optional)"
+        }
       }
     },
     "error": {
       "invalid_auth": "DB API credentials rejected.",
       "cannot_connect": "DB API not reachable.",
-      "no_stations": "No matching station found."
+      "no_stations": "No matching station found.",
+      "name_too_long": "Maximum 80 characters."
     },
     "abort": {
       "no_saved_stations": "There are no saved stations."
@@ -123,6 +139,35 @@
       },
       "last_update": {
         "name": "Last successful update"
+      },
+      "departure_time": {
+        "name": "Train {number} departure time"
+      },
+      "departure_date": {
+        "name": "Train {number} date"
+      },
+      "line": {
+        "name": "Train {number} line"
+      },
+      "terminal": {
+        "name": "Train {number} terminus"
+      },
+      "platform": {
+        "name": "Train {number} platform"
+      },
+      "delay_minutes": {
+        "name": "Train {number} delay"
+      },
+      "average_delay": {
+        "name": "Average delay"
+      },
+      "json_route": {
+        "name": "Timetable JSON"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Refresh now"
       }
     }
   }

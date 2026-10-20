@@ -41,3 +41,21 @@ def test_translation_files_have_equivalent_steps():
             assert {"from_eva", "to_eva"} <= fields.keys()
             assert "from_query" not in fields and "to_query" not in fields
     assert en["entity"]["sensor"].keys() == de["entity"]["sensor"].keys()
+
+
+def test_button_platform_json_sensor_and_translations():
+    base = ROOT / "custom_components" / "db_fahrplan"
+    init = (base / "__init__.py").read_text()
+    assert "Platform.BUTTON" in init
+    button = (base / "button.py").read_text()
+    assert "async_manual_refresh" in button
+    sensor = (base / "sensor.py").read_text()
+    assert '"json_route"' in sensor
+    assert '"average_delay"' in sensor
+    assert "DepartureFieldSensor" in sensor
+    for name in ("strings.json", "translations/de.json", "translations/en.json"):
+        translated = json.loads((base / name).read_text())
+        assert "refresh" in translated["entity"]["button"]
+        for key in ("departure_time", "departure_date", "line", "terminal", "platform", "delay_minutes", "average_delay", "json_route"):
+            assert key in translated["entity"]["sensor"]
+        assert "set_display_name" in translated["options"]["step"]["init"]["menu_options"]
